@@ -1363,17 +1363,204 @@ function applyChartMode() {
 }
 
 // ============================================================
+// CHART MANAGEMENT
+// ============================================================
+var charts = {};  // { chartId: Chart instance }
+
+function getOrCreateChart(canvasId, config) {
+  if (charts[canvasId]) {
+    charts[canvasId].destroy();
+  }
+  var ctx = document.getElementById(canvasId);
+  if (!ctx) return null;
+  charts[canvasId] = new Chart(ctx, config);
+  return charts[canvasId];
+}
+
+function buildChartConfig(labels, probData, posData, colorScheme) {
+  var colors = getChartColors();
+  var probColor = colorScheme === 'improved' ? colors.accent : colors.primary;
+  var posColor = colors.warning;
+  return {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Probability',
+          data: probData,
+          type: 'line',
+          borderColor: probColor,
+          backgroundColor: probColor + '22',
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          fill: true,
+          tension: 0.3,
+          yAxisID: 'yProb',
+          order: 1,
+          _datasetKey: 'prob',
+        },
+        {
+          label: 'Holdings',
+          data: posData,
+          backgroundColor: posColor + '55',
+          borderColor: posColor,
+          borderWidth: 1,
+          yAxisID: 'yPos',
+          order: 2,
+          _datasetKey: 'pos',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) {
+              if (ctx.dataset._datasetKey === 'prob') return 'P: ' + (ctx.raw * 100).toFixed(2) + '%';
+              return 'Holdings: ' + formatCompact(ctx.raw);
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: colors.textMuted, font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 20 },
+          grid: { color: colors.border + '33' },
+        },
+        yProb: {
+          type: 'linear', position: 'left',
+          title: { display: true, text: 'Probability', color: colors.textMuted, font: { size: 10 } },
+          ticks: { color: colors.textMuted, font: { size: 9 }, callback: function (v) { return (v * 100).toFixed(1) + '%'; } },
+          grid: { color: colors.border + '33' },
+          min: 0,
+        },
+        yPos: {
+          type: 'linear', position: 'right',
+          title: { display: true, text: 'Holdings', color: colors.textMuted, font: { size: 10 } },
+          ticks: { color: colors.textMuted, font: { size: 9 } },
+          grid: { drawOnChartArea: false },
+          min: 0,
+        },
+      },
+    },
+  };
+}
+
+function initTraderCharts() {
+  if (!dualMarket || !dualMarket.current) return;
+  var labels = dualMarket.current.getLabels();
+  var cProbs = dualMarket.current.getProbabilities();
+  var iProbs = dualMarket.improved.getProbabilities();
+  var emptyHoldings = [];
+  for (var j = 0; j < dualMarket.current.N; j++) emptyHoldings.push(0);
+
+  getOrCreateChart('traderCurrentChart', buildChartConfig(labels, cProbs, emptyHoldings, 'current'));
+  getOrCreateChart('traderImprovedChart', buildChartConfig(labels, iProbs, emptyHoldings, 'improved'));
+}
+
+function refreshTraderCharts() {
+  if (!dualMarket || !dualMarket.current) return;
+
+  var traderName = document.getElementById('traderSelect').value;
+  var cProbs = dualMarket.current.getProbabilities();
+  var iProbs = dualMarket.improved.getProbabilities();
+
+  // Get holdings for the active trader
+  var cHoldings = [], iHoldings = [];
+  for (var j = 0; j < dualMarket.current.N; j++) {
+    cHoldings.push(0);
+    iHoldings.push(0);
+  }
+  if (traderName) {
+    var cTh = dualMarket.current.traderHoldings[traderName];
+    var iTh = dualMarket.improved.traderHoldings[traderName];
+    if (cTh) cHoldings = cTh.holdings.slice();
+    if (iTh) iHoldings = iTh.holdings.slice();
+  }
+
+  // Update split charts
+  var cc = charts['traderCurrentChart'];
+  if (cc) {
+    cc.data.datasets[0].data = cProbs;
+    cc.data.datasets[1].data = cHoldings;
+    cc.update('none');
+  }
+  var ic = charts['traderImprovedChart'];
+  if (ic) {
+    ic.data.datasets[0].data = iProbs;
+    ic.data.datasets[1].data = iHoldings;
+    ic.update('none');
+  }
+
+  refreshTraderStats(traderName);
+}
+
+function refreshTraderStats(traderName) {
+  if (!dualMarket || !dualMarket.current) return;
+
+  var cGrid = document.getElementById('traderStatsCurrentGrid');
+  var iGrid = document.getElementById('traderStatsImprovedGrid');
+
+  if (!traderName) {
+    var emptyHtml = '<div class="result-item"><div class="result-label">Select a trader</div><div class="result-value">—</div></div>';
+    if (cGrid) cGrid.innerHTML = emptyHtml;
+    if (iGrid) iGrid.innerHTML = emptyHtml;
+    return;
+  }
+
+  var portfolios = dualMarket.getPortfolios(traderName);
+  if (!portfolios) return;
+
+  var cp = portfolios.current;
+  var ip = portfolios.improved;
+
+  function statsHtml(p, engine) {
+    var k = engine === 'current' ? dualMarket.current.k : dualMarket.improved.k;
+    var pnlClass = p.unrealizedPnL >= 0 ? 'positive' : 'negative';
+    return '' +
+      '<div class="result-item"><div class="result-label">Vault (k)</div><div class="result-value">' + formatCompact(k) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Wallet</div><div class="result-value">' + formatCompact(p.wallet) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Holdings</div><div class="result-value">' + formatCompact(p.totalHoldings) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">E[Payout]</div><div class="result-value">' + formatCompact(p.expectedPayout) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Peak Payout</div><div class="result-value">' + formatCompact(p.peakPayout) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Spent</div><div class="result-value">' + formatCompact(p.totalSpent) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Received</div><div class="result-value">' + formatCompact(p.totalReceived) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Unreal. PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(p.unrealizedPnL) + '</div></div>';
+  }
+
+  if (cGrid) cGrid.innerHTML = statsHtml(cp, 'current');
+  if (iGrid) iGrid.innerHTML = statsHtml(ip, 'improved');
+}
+
+// ============================================================
 // DATASET TOGGLES
 // ============================================================
 function toggleDataset(chartId, datasetKey, visible) {
-  // Placeholder — will be wired to Chart.js instances in later phases
+  var chart = charts[chartId];
+  if (!chart) return;
+  for (var i = 0; i < chart.data.datasets.length; i++) {
+    if (chart.data.datasets[i]._datasetKey === datasetKey) {
+      chart.setDatasetVisibility(i, visible);
+    }
+  }
+  chart.update('none');
 }
 
 // ============================================================
 // CHART RESIZE
 // ============================================================
 function resizeVisibleCharts() {
-  // Placeholder — will iterate Chart.js instances and call .resize()
+  for (var id in charts) {
+    if (charts[id] && charts[id].canvas && charts[id].canvas.offsetParent !== null) {
+      charts[id].resize();
+    }
+  }
 }
 
 // ============================================================
@@ -1476,6 +1663,9 @@ function createMarket() {
 
   // Enable trading tabs
   enableTradingTabs();
+
+  // Initialize charts
+  initTraderCharts();
 
   showToast('Market created: ' + N + ' bins, range [' + rangeMin + ', ' + rangeMax + '], k=' + formatCompact(liquidity), 'info');
 }
@@ -1619,12 +1809,47 @@ document.getElementById('resolveInput').addEventListener('input', function () {
 });
 
 // ============================================================
-// STUBS (filled in Phase 3+)
+// PHASE 3: DISCRETE TRADING
 // ============================================================
 function executeTrade(side) {
-  showToast('Trade execution will be wired in Phase 3', 'info');
+  if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first', 'error');
+  var traderName = document.getElementById('traderSelect').value;
+  if (!traderName) return showToast('Select a trader first', 'error');
+  var binIdx = parseInt(document.getElementById('traderBinSlider').value, 10);
+  var amount = parseFloat(document.getElementById('traderAmount').value);
+  if (isNaN(amount) || amount <= 0) return showToast('Amount must be > 0', 'error');
+
+  var result;
+  if (side === 'buy') {
+    result = dualMarket.discreteBuy(traderName, binIdx, amount);
+  } else {
+    result = dualMarket.discreteSell(traderName, binIdx, amount);
+  }
+
+  if (result.error) return showToast(result.error, 'error');
+  if (result.current && result.current.error) return showToast('Current: ' + result.current.error, 'error');
+  if (result.improved && result.improved.error) showToast('Improved: ' + result.improved.error, 'error');
+
+  // Show toast
+  var label = dualMarket.current.getLabels()[binIdx] || binIdx;
+  if (side === 'buy') {
+    showToast(traderName + ' bought bin ' + label + ': ' + formatCompact(result.current.tokensOut) + ' tokens for $' + formatCompact(amount), 'buy');
+  } else {
+    showToast(traderName + ' sold ' + formatCompact(amount) + ' tokens from bin ' + label + ': $' + formatCompact(result.current.collateralOut), 'sell');
+  }
+
+  refreshTraderCharts();
+  renderTraderList();
 }
 
+// Active trader change -> refresh charts
+document.getElementById('traderSelect').addEventListener('change', function () {
+  refreshTraderCharts();
+});
+
+// ============================================================
+// STUBS (filled in Phase 4+)
+// ============================================================
 function executeDistTrade(side) {
   showToast('Distribution trading will be wired in Phase 4', 'info');
 }

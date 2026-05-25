@@ -99,11 +99,11 @@ Show the key differing formulas at the top of each market column:
 
 > **Goal:** Discrete bin buy/sell with live dual charts and side-by-side comparison.
 
-- [ ] **P3-1:** Shared trade controls (bin slider, amount, buy/sell buttons)
-- [ ] **P3-2:** Dual charts rendering (Chart.js smooth lines, probability + position datasets)
-- [ ] **P3-3:** Dual stats panels (k, invariant, wallet, expected/peak payout, PnL)
-- [ ] **P3-4:** Trade execution flow (preview -> execute -> update both)
-- [ ] **P3-5:** Chart dataset toggling (show/hide probability, position)
+- [x] **P3-1:** Shared trade controls (bin slider, amount, buy/sell buttons)
+- [x] **P3-2:** Dual charts rendering (Chart.js smooth lines, probability + position datasets)
+- [x] **P3-3:** Dual stats panels (k, invariant, wallet, expected/peak payout, PnL)
+- [x] **P3-4:** Trade execution flow (preview -> execute -> update both)
+- [x] **P3-5:** Chart dataset toggling (show/hide probability, position)
 
 > **Critical insight:** Both engines use the same L2 AMM for trading —
 > `discreteBuy()` and `discreteSell()` produce identical `tokensOut` and
@@ -221,7 +221,7 @@ Source code to port/adapt from:
 | P0 | Done | Dual engine core | — |
 | P1 | Done | HTML layout & tabs | — |
 | P2 | Done | Setup tab | P0, P1 |
-| P3 | | Trader tab | P0, P1, P2 |
+| P3 | Done | Trader tab | P0, P1, P2 |
 | P4 | | Distribution tab | P0, P1, P2 |
 | P5 | | Resolve tab | P0, P1, P2 |
 | P6 | | Combined chart mode | P3 or P4 |

@@ -107,7 +107,10 @@ function showToast(message, type) {
 }
 
 function updateAllCharts() {
-  // Placeholder — filled in by UI phases
+  if (typeof initTraderCharts === 'function' && dualMarket && dualMarket.initialized) {
+    initTraderCharts();
+    if (typeof refreshTraderCharts === 'function') refreshTraderCharts();
+  }
 }
 
 function saveSettings() {
