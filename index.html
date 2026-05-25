@@ -1420,16 +1420,207 @@ document.getElementById('settingsModal').addEventListener('click', function (e) 
 });
 
 // ============================================================
-// STUBS (filled in Phase 2+)
+// PHASE 2: SETUP TAB
 // ============================================================
+var marketCreated = false;
+
 function createMarket() {
-  showToast('Market creation will be wired in Phase 2', 'info');
+  var N = parseInt(document.getElementById('setupBins').value, 10);
+  var rangeMin = parseFloat(document.getElementById('setupRangeMin').value);
+  var rangeMax = parseFloat(document.getElementById('setupRangeMax').value);
+  var liquidity = parseFloat(document.getElementById('setupLiquidity').value);
+  var kernelWidth = parseInt(document.getElementById('setupKernelWidth').value, 10);
+  var tradeFeeBps = parseInt(document.getElementById('setupTradeFeeBps').value, 10) || 0;
+  var lpFeeSharePct = parseInt(document.getElementById('setupLpFeeSharePct').value, 10) || 0;
+  var redemptionFeeBps = parseInt(document.getElementById('setupRedemptionFeeBps').value, 10) || 0;
+
+  // Validate
+  if (isNaN(N) || N < 2) return showToast('Bins must be >= 2', 'error');
+  if (isNaN(rangeMin) || isNaN(rangeMax) || rangeMin >= rangeMax) return showToast('Range min must be < max', 'error');
+  if (isNaN(liquidity) || liquidity <= 0) return showToast('Liquidity must be > 0', 'error');
+  if (isNaN(kernelWidth) || kernelWidth < 0) return showToast('Kernel width must be >= 0', 'error');
+  if (kernelWidth >= N) showToast('Warning: kernel width >= bins (extreme smoothing)', 'info');
+  if (kernelWidth === 0) showToast('Note: W=0 makes improved identical to WTA', 'info');
+
+  // Init dual market
+  dualMarket = new DualMarket();
+  dualMarket.init(N, rangeMin, rangeMax, liquidity, {
+    tradeFeeBps: tradeFeeBps,
+    lpFeeSharePct: lpFeeSharePct,
+    redemptionFeeBps: redemptionFeeBps,
+  }, kernelWidth);
+
+  marketCreated = true;
+
+  // Update trader tab controls
+  var maxBin = N - 1;
+  document.getElementById('traderBinSlider').max = maxBin;
+  document.getElementById('traderBinSlider').value = Math.floor(maxBin / 2);
+  document.getElementById('traderBinInput').max = maxBin;
+  document.getElementById('traderBinInput').value = Math.floor(maxBin / 2);
+  updateBinLabel();
+
+  // Update distribution tab controls
+  document.getElementById('distMuSlider').min = rangeMin;
+  document.getElementById('distMuSlider').max = rangeMax;
+  document.getElementById('distMuSlider').value = (rangeMin + rangeMax) / 2;
+  document.getElementById('distMuInput').value = (rangeMin + rangeMax) / 2;
+  updateDistLabels();
+
+  // Update resolve tab controls
+  document.getElementById('resolveSlider').min = rangeMin;
+  document.getElementById('resolveSlider').max = rangeMax;
+  document.getElementById('resolveSlider').value = (rangeMin + rangeMax) / 2;
+  document.getElementById('resolveInput').value = (rangeMin + rangeMax) / 2;
+  document.getElementById('resolveKernelWidthDisplay').textContent = kernelWidth;
+
+  // Enable trading tabs
+  enableTradingTabs();
+
+  showToast('Market created: ' + N + ' bins, range [' + rangeMin + ', ' + rangeMax + '], k=' + formatCompact(liquidity), 'info');
 }
 
 function addTrader() {
-  showToast('Trader management will be wired in Phase 2', 'info');
+  if (!marketCreated) return showToast('Create a market first', 'error');
+
+  var nameEl = document.getElementById('traderName');
+  var balanceEl = document.getElementById('traderBalance');
+  var name = nameEl.value.trim();
+  var balance = parseFloat(balanceEl.value);
+
+  if (!name) return showToast('Trader name is required', 'error');
+  if (isNaN(balance) || balance <= 0) return showToast('Balance must be > 0', 'error');
+
+  var result = dualMarket.addTrader(name, balance);
+  if (result.error) return showToast(result.error, 'error');
+
+  nameEl.value = '';
+  renderTraderList();
+  updateTraderSelectors();
+  showToast('Added trader: ' + name + ' ($' + formatCompact(balance) + ')', 'info');
 }
 
+function topUpTrader(name) {
+  var amount = prompt('Top-up amount for ' + name + ':');
+  if (!amount) return;
+  amount = parseFloat(amount);
+  if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
+
+  var t = dualMarket.traders[name];
+  if (!t) return;
+  t.currentWallet += amount;
+  t.improvedWallet += amount;
+  renderTraderList();
+  showToast('Topped up ' + name + ' by $' + formatCompact(amount), 'info');
+}
+
+function renderTraderList() {
+  var container = document.getElementById('traderList');
+  var traders = dualMarket ? dualMarket.traders : {};
+  var names = Object.keys(traders);
+  if (names.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="padding:20px;"><div class="empty-state-text">No traders yet</div></div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < names.length; i++) {
+    var n = names[i];
+    var t = traders[n];
+    html += '<div class="trader-row">' +
+      '<span class="trader-name">' + n + '</span>' +
+      '<span class="trader-wallet">C: $' + formatCompact(t.currentWallet) + ' | I: $' + formatCompact(t.improvedWallet) + '</span>' +
+      '<button class="btn btn-sm btn-outline" onclick="topUpTrader(\'' + n.replace(/'/g, "\\'") + '\')">Top Up</button>' +
+      '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function updateTraderSelectors() {
+  var names = dualMarket ? Object.keys(dualMarket.traders) : [];
+  var selectors = [
+    document.getElementById('traderSelect'),
+    document.getElementById('distTraderSelect'),
+  ];
+  for (var s = 0; s < selectors.length; s++) {
+    var sel = selectors[s];
+    if (!sel) continue;
+    var prev = sel.value;
+    sel.innerHTML = '';
+    for (var i = 0; i < names.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = names[i];
+      opt.textContent = names[i];
+      sel.appendChild(opt);
+    }
+    if (prev && names.indexOf(prev) >= 0) sel.value = prev;
+  }
+}
+
+// ============================================================
+// INPUT SYNC HELPERS
+// ============================================================
+function updateBinLabel() {
+  if (!dualMarket || !dualMarket.current) return;
+  var bin = parseInt(document.getElementById('traderBinSlider').value, 10);
+  var labels = dualMarket.current.getLabels();
+  var el = document.getElementById('traderBinLabel');
+  if (el && labels[bin]) el.textContent = '(' + labels[bin] + ')';
+}
+
+function updateDistLabels() {
+  if (!dualMarket || !dualMarket.current) return;
+  var mu = parseFloat(document.getElementById('distMuSlider').value);
+  var el = document.getElementById('distMuLabel');
+  if (el) el.textContent = '(' + mu.toFixed(1) + ')';
+
+  // Compute sigma from confidence slider
+  var range = dualMarket.current.rangeMax - dualMarket.current.rangeMin;
+  var conf = parseInt(document.getElementById('distConfSlider').value, 10);
+  var maxSigma = range / 2;
+  var minSigma = range / (dualMarket.current.N * 2);
+  var sigma = maxSigma - (conf / 100) * (maxSigma - minSigma);
+  document.getElementById('distSigmaDisplay').textContent = '\u03C3 = ' + sigma.toFixed(2);
+  document.getElementById('distSigmaLabel').textContent = '(' + conf + '%)';
+}
+
+// Bin slider <-> input sync
+document.getElementById('traderBinSlider').addEventListener('input', function () {
+  document.getElementById('traderBinInput').value = this.value;
+  updateBinLabel();
+});
+document.getElementById('traderBinInput').addEventListener('input', function () {
+  var v = Math.max(0, Math.min(parseInt(this.max, 10), parseInt(this.value, 10) || 0));
+  document.getElementById('traderBinSlider').value = v;
+  this.value = v;
+  updateBinLabel();
+});
+
+// Mu slider <-> input sync
+document.getElementById('distMuSlider').addEventListener('input', function () {
+  document.getElementById('distMuInput').value = this.value;
+  updateDistLabels();
+});
+document.getElementById('distMuInput').addEventListener('input', function () {
+  document.getElementById('distMuSlider').value = this.value;
+  updateDistLabels();
+});
+
+// Confidence slider updates sigma display
+document.getElementById('distConfSlider').addEventListener('input', function () {
+  updateDistLabels();
+});
+
+// Resolve slider <-> input sync
+document.getElementById('resolveSlider').addEventListener('input', function () {
+  document.getElementById('resolveInput').value = this.value;
+});
+document.getElementById('resolveInput').addEventListener('input', function () {
+  document.getElementById('resolveSlider').value = this.value;
+});
+
+// ============================================================
+// STUBS (filled in Phase 3+)
+// ============================================================
 function executeTrade(side) {
   showToast('Trade execution will be wired in Phase 3', 'info');
 }

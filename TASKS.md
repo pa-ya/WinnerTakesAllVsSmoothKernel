@@ -84,9 +84,9 @@ Show the key differing formulas at the top of each market column:
 
 > **Goal:** Market creation form with shared parameters that initializes both engines.
 
-- [ ] **P2-1:** Setup form fields (bins, range, liquidity, kernel width, fees)
-- [ ] **P2-2:** "Create Market" button (validates, inits DualMarket, switches to Trader tab)
-- [ ] **P2-3:** Trader management section (add trader, list, top-up, active selector)
+- [x] **P2-1:** Setup form fields (bins, range, liquidity, kernel width, fees)
+- [x] **P2-2:** "Create Market" button (validates, inits DualMarket, switches to Trader tab)
+- [x] **P2-3:** Trader management section (add trader, list, top-up, active selector)
 
 > **Potential bugs:**
 > - Kernel width must be validated: `W >= 0`, `W < N`. If W=0, improved degrades to
@@ -220,7 +220,7 @@ Source code to port/adapt from:
 |-------|--------|-------------|------------|
 | P0 | Done | Dual engine core | — |
 | P1 | Done | HTML layout & tabs | — |
-| P2 | | Setup tab | P0, P1 |
+| P2 | Done | Setup tab | P0, P1 |
 | P3 | | Trader tab | P0, P1, P2 |
 | P4 | | Distribution tab | P0, P1, P2 |
 | P5 | | Resolve tab | P0, P1, P2 |
