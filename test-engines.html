@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head><title>Engine Tests</title></head>
+<body>
+<script src="comparison.js"></script>
+<script>
+// Verification tests for Phase 0 — run in browser console
+(function () {
+  var pass = 0, fail = 0;
+  function assert(cond, msg) {
+    if (cond) { pass++; console.log('  PASS: ' + msg); }
+    else { fail++; console.error('  FAIL: ' + msg); }
+  }
+  function near(a, b, eps) { return Math.abs(a - b) < (eps || 0.01); }
+
+  console.log('=== Phase 0 Engine Verification ===');
+
+  // --- Test 1: Initialization ---
+  console.log('\n--- Test 1: Initialization ---');
+  var dm = new DualMarket();
+  dm.init(32, 0, 100, 10000, { tradeFeeBps: 0 }, 3);
+
+  assert(dm.current.N === 32, 'Current N = 32');
+  assert(dm.improved.N === 32, 'Improved N = 32');
+  assert(near(dm.current.k, 10000), 'Current k = 10000');
+  assert(near(dm.improved.k, 10000), 'Improved k = 10000');
+  assert(dm.improved.kernelWidth === 3, 'Kernel width = 3');
+
+  // Positions should be identical
+  var sync = dm.verifySync();
+  assert(sync.synced, 'Positions synced after init (drift=' + sync.maxPositionDrift.toFixed(6) + ')');
+
+  // Probabilities differ in formula but should sum to 1
+  var cProbs = dm.current.getProbabilities();
+  var iProbs = dm.improved.getProbabilities();
+  var cSum = cProbs.reduce(function (a, b) { return a + b; }, 0);
+  var iSum = iProbs.reduce(function (a, b) { return a + b; }, 0);
+  assert(near(cSum, 1, 0.001), 'Current probs sum to 1 (got ' + cSum.toFixed(6) + ')');
+  assert(near(iSum, 1, 0.001), 'Improved probs sum to 1 (got ' + iSum.toFixed(6) + ')');
+
+  // At uniform, both should be 1/N
+  assert(near(cProbs[0], 1 / 32, 0.001), 'Current uniform prob = 1/32');
+  assert(near(iProbs[0], 1 / 32, 0.001), 'Improved uniform prob = 1/32');
+
+  // AMM invariant: sum(x^2) = k^2
+  var sumSqC = 0, sumSqI = 0;
+  for (var j = 0; j < 32; j++) {
+    sumSqC += dm.current.positions[j] * dm.current.positions[j];
+    sumSqI += dm.improved.positions[j] * dm.improved.positions[j];
+  }
+  assert(near(sumSqC, 10000 * 10000, 1), 'Current AMM invariant holds');
+  assert(near(sumSqI, 10000 * 10000, 1), 'Improved AMM invariant holds');
+
+  // --- Test 2: Discrete Buy ---
+  console.log('\n--- Test 2: Discrete Buy ---');
+  dm.addTrader('Alice', 50000);
+  var buyResult = dm.discreteBuy('Alice', 10, 5000);
+  assert(!buyResult.error, 'Dual buy succeeded');
+  assert(!buyResult.current.error, 'Current buy no error');
+  assert(!buyResult.improved.error, 'Improved buy no error');
+
+  // Trade outputs should be identical (same L2 AMM)
+  assert(near(buyResult.current.tokensOut, buyResult.improved.tokensOut, 0.001),
+    'TokensOut identical: ' + buyResult.current.tokensOut.toFixed(4) + ' vs ' + buyResult.improved.tokensOut.toFixed(4));
+  assert(near(buyResult.current.fee, buyResult.improved.fee),
+    'Fee identical');
+
+  // Probabilities should differ
+  assert(!near(buyResult.current.newProb, buyResult.improved.newProb, 0.001),
+    'NewProb differs: current=' + buyResult.current.newProb.toFixed(6) + ' improved=' + buyResult.improved.newProb.toFixed(6));
+
+  // Positions should still be synced
+  sync = dm.verifySync();
+  assert(sync.synced, 'Positions still synced after buy (drift=' + sync.maxPositionDrift.toFixed(6) + ')');
+
+  // Wallets: both engines deducted 5000
+  var bal = dm.getTraderBalance('Alice');
+  assert(near(bal.current, 45000), 'Current wallet = 45000');
+  assert(near(bal.improved, 45000), 'Improved wallet = 45000');
+
+  // --- Test 3: Discrete Sell ---
+  console.log('\n--- Test 3: Discrete Sell ---');
+  var sellResult = dm.discreteSell('Alice', 10, 1000);
+  assert(!sellResult.error, 'Dual sell succeeded');
+  assert(near(sellResult.current.collateralOut, sellResult.improved.collateralOut, 0.001),
+    'Sell collateralOut identical');
+
+  sync = dm.verifySync();
+  assert(sync.synced, 'Positions synced after sell');
+
+  // --- Test 4: Distribution Buy ---
+  console.log('\n--- Test 4: Distribution Buy ---');
+  dm.addTrader('Bob', 30000);
+  var distBuy = dm.distributionBuy('Bob', 50, 10, 8000);
+  assert(!distBuy.error, 'Dist buy succeeded');
+  assert(near(distBuy.current.totalTokens, distBuy.improved.totalTokens, 0.001),
+    'Dist buy totalTokens identical');
+
+  sync = dm.verifySync();
+  assert(sync.synced, 'Positions synced after dist buy');
+
+  // --- Test 5: Distribution Sell ---
+  console.log('\n--- Test 5: Distribution Sell ---');
+  var distSell = dm.distributionSell('Bob', 50, 10, 2000);
+  assert(!distSell.error, 'Dist sell succeeded');
+  assert(near(distSell.current.collateralOut, distSell.improved.collateralOut, 0.001),
+    'Dist sell collateralOut identical');
+
+  sync = dm.verifySync();
+  assert(sync.synced, 'Positions synced after dist sell');
+
+  // --- Test 6: Resolution ---
+  console.log('\n--- Test 6: Resolution ---');
+  var resolveResult = dm.resolve(50);
+  assert(!resolveResult.error, 'Resolve succeeded');
+  assert(resolveResult.current.winningBin === resolveResult.improved.winningBin,
+    'Same winning bin: ' + resolveResult.current.winningBin);
+
+  // Current: WTA (only winning bin pays)
+  // Improved: Kernel (nearby bins contribute)
+  var cPayouts = resolveResult.current.payouts;
+  var iPayouts = resolveResult.improved.payouts;
+  console.log('  Current payouts:');
+  cPayouts.forEach(function (p) {
+    console.log('    ' + p.name + ' (' + p.type + '): payout=' + p.payout.toFixed(2) + ' PnL=' + p.netPnL.toFixed(2));
+  });
+  console.log('  Improved payouts:');
+  iPayouts.forEach(function (p) {
+    console.log('    ' + p.name + ' (' + p.type + '): payout=' + p.payout.toFixed(2) + ' PnL=' + p.netPnL.toFixed(2));
+  });
+
+  // Verify vault balance identity for both
+  var cTraderTotal = 0, iTraderTotal = 0;
+  cPayouts.forEach(function (p) { cTraderTotal += p.payout; });
+  iPayouts.forEach(function (p) { iTraderTotal += p.payout; });
+  // For current: sum of all payouts should equal k (within rounding)
+  assert(near(cTraderTotal, dm.current.k, 1), 'Current vault identity: payouts=' + cTraderTotal.toFixed(2) + ' k=' + dm.current.k.toFixed(2));
+  assert(near(iTraderTotal, dm.improved.k, 1), 'Improved vault identity: payouts=' + iTraderTotal.toFixed(2) + ' k=' + dm.improved.k.toFixed(2));
+
+  // Solvency: improved claim scale
+  assert(resolveResult.improved.claimScale <= 1, 'Improved claimScale <= 1: ' + resolveResult.improved.claimScale.toFixed(4));
+
+  // --- Test 7: Kernel width 0 degrades to WTA ---
+  console.log('\n--- Test 7: Kernel width 0 = WTA ---');
+  var dm2 = new DualMarket();
+  dm2.init(16, 0, 100, 5000, {}, 0);
+  dm2.addTrader('Test', 10000);
+  dm2.discreteBuy('Test', 5, 2000);
+  var r2 = dm2.resolve(35);
+  var cPay = r2.current.payouts.find(function (p) { return p.name === 'Test'; });
+  var iPay = r2.improved.payouts.find(function (p) { return p.name === 'Test'; });
+  assert(near(cPay.payout, iPay.payout, 1),
+    'W=0: payouts match (current=' + cPay.payout.toFixed(2) + ' improved=' + iPay.payout.toFixed(2) + ')');
+
+  // --- Test 8: Portfolio ---
+  console.log('\n--- Test 8: Portfolio ---');
+  var dm3 = new DualMarket();
+  dm3.init(32, 0, 100, 10000, {}, 3);
+  dm3.addTrader('Carol', 20000);
+  dm3.discreteBuy('Carol', 15, 3000);
+  var portfolios = dm3.getPortfolios('Carol');
+  assert(portfolios.current !== null, 'Current portfolio exists');
+  assert(portfolios.improved !== null, 'Improved portfolio exists');
+  assert(near(portfolios.current.totalHoldings, portfolios.improved.totalHoldings, 0.01),
+    'Total holdings identical');
+  console.log('  Current expected=' + portfolios.current.expectedPayout.toFixed(2) +
+    ' Improved expected=' + portfolios.improved.expectedPayout.toFixed(2));
+
+  // --- Summary ---
+  console.log('\n=== RESULTS: ' + pass + ' passed, ' + fail + ' failed ===');
+  document.body.innerHTML = '<h2>Phase 0 Verification: ' + pass + ' passed, ' + fail + ' failed</h2>' +
+    '<p>Check browser console for details.</p>' +
+    (fail > 0 ? '<p style="color:red">Some tests FAILED!</p>' : '<p style="color:green">All tests PASSED!</p>');
+})();
+</script>
+</body>
+</html>
