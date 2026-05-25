@@ -116,9 +116,9 @@ Show the key differing formulas at the top of each market column:
 
 > **Goal:** Distribution (mu/sigma) trading with the same dual-chart comparison.
 
-- [ ] **P4-1:** Shared distribution controls (mu slider, confidence/sigma, amount)
-- [ ] **P4-2:** Distribution trade execution (dual buy/sell)
-- [ ] **P4-3:** Distribution trade preview (live preview as inputs change)
+- [x] **P4-1:** Shared distribution controls (mu slider, confidence/sigma, amount)
+- [x] **P4-2:** Distribution trade execution (dual buy/sell)
+- [x] **P4-3:** Distribution trade preview (live preview as inputs change)
 
 ---
 
@@ -222,7 +222,7 @@ Source code to port/adapt from:
 | P1 | Done | HTML layout & tabs | — |
 | P2 | Done | Setup tab | P0, P1 |
 | P3 | Done | Trader tab | P0, P1, P2 |
-| P4 | | Distribution tab | P0, P1, P2 |
+| P4 | Done | Distribution tab | P0, P1, P2 |
 | P5 | | Resolve tab | P0, P1, P2 |
 | P6 | | Combined chart mode | P3 or P4 |
 | P7 | | Axis drag interactivity | P3 or P4 |

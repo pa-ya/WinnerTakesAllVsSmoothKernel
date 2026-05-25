@@ -107,9 +107,17 @@ function showToast(message, type) {
 }
 
 function updateAllCharts() {
-  if (typeof initTraderCharts === 'function' && dualMarket && dualMarket.initialized) {
-    initTraderCharts();
-    if (typeof refreshTraderCharts === 'function') refreshTraderCharts();
+  if (dualMarket && dualMarket.initialized) {
+    if (typeof initTraderCharts === 'function') {
+      initTraderCharts();
+      if (typeof refreshTraderCharts === 'function') refreshTraderCharts();
+    }
+    if (typeof initDistCharts === 'function') {
+      initDistCharts();
+      if (typeof refreshDistCharts === 'function') refreshDistCharts();
+    }
+    // Re-apply dataset visibility from checkbox states after chart recreation
+    if (typeof reapplyDatasetToggles === 'function') reapplyDatasetToggles();
   }
 }
 
