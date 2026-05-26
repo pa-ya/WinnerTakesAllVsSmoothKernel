@@ -116,6 +116,11 @@ function updateAllCharts() {
       initDistCharts();
       if (typeof refreshDistCharts === 'function') refreshDistCharts();
     }
+    // Combined charts
+    if (typeof initCombinedTraderChart === 'function') initCombinedTraderChart();
+    if (typeof initCombinedDistChart === 'function') initCombinedDistChart();
+    if (typeof refreshCombinedTraderChart === 'function') refreshCombinedTraderChart();
+    if (typeof refreshCombinedDistChart === 'function') refreshCombinedDistChart();
     // Re-apply dataset visibility from checkbox states after chart recreation
     if (typeof reapplyDatasetToggles === 'function') reapplyDatasetToggles();
     // Re-apply resolution markers and kernel chart if resolved

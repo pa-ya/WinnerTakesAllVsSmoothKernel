@@ -140,10 +140,10 @@ Show the key differing formulas at the top of each market column:
 
 > **Goal:** Overlay both markets' curves in a single chart for direct visual comparison.
 
-- [ ] **P6-1:** Combined chart rendering (current + improved + position + preview)
-- [ ] **P6-2:** Comparison guidelines (dashed lines at uniform, max divergence)
-- [ ] **P6-3:** Combined mode stats (comparison table with delta column)
-- [ ] **P6-4:** Toggle between split and combined (smooth transition)
+- [x] **P6-1:** Combined chart rendering (current + improved + position + preview)
+- [x] **P6-2:** Comparison guidelines (dashed lines at uniform, max divergence)
+- [x] **P6-3:** Combined mode stats (comparison table with delta column)
+- [x] **P6-4:** Toggle between split and combined (smooth transition)
 
 ---
 
@@ -224,7 +224,7 @@ Source code to port/adapt from:
 | P3 | Done | Trader tab | P0, P1, P2 |
 | P4 | Done | Distribution tab | P0, P1, P2 |
 | P5 | Done | Resolve tab | P0, P1, P2 |
-| P6 | | Combined chart mode | P3 or P4 |
+| P6 | Done | Combined chart mode | P3 or P4 |
 | P7 | | Axis drag interactivity | P3 or P4 |
 | P8 | | Settings & polish | All above |
 
