@@ -187,33 +187,35 @@
     </div>
 
     <!-- Distribution controls -->
-    <div class="demo-controls" id="distControls">
-      <div class="control-group">
-        <label class="control-label">Mu (center) <span id="distMuLabel"></span></label>
-        <input type="range" class="control-input" id="distMuSlider" min="0" max="100" value="50" step="0.1">
-        <input type="number" class="control-input" id="distMuInput" value="50" step="0.1" style="margin-top:4px">
-      </div>
-      <div class="control-group">
-        <label class="control-label">Confidence <span id="distSigmaLabel"></span></label>
-        <input type="range" class="control-input" id="distConfSlider" min="0" max="100" value="50">
-        <span class="control-value" id="distSigmaDisplay">&#963; = —</span>
-      </div>
-      <div class="control-group">
-        <label class="control-label">Amount</label>
-        <input type="number" class="control-input" id="distAmount" value="5000" min="1">
-      </div>
-      <div class="control-group" style="justify-content:flex-end;">
-        <label class="control-label">&nbsp;</label>
-        <div class="btn-group">
-          <button class="btn btn-success" onclick="executeDistTrade('buy')">Buy</button>
-          <button class="btn btn-danger" onclick="executeDistTrade('sell')">Sell</button>
+    <div class="trade-controls" id="distControls">
+      <div class="trade-controls-row">
+        <div class="control-group trade-control-mu">
+          <label class="control-label">Mu (center) <span id="distMuLabel"></span></label>
+          <input type="range" class="control-input" id="distMuSlider" min="0" max="100" value="50" step="0.1">
+          <input type="number" class="control-input" id="distMuInput" value="50" step="0.1">
+        </div>
+        <div class="control-group trade-control-conf">
+          <label class="control-label">Confidence <span id="distSigmaLabel"></span></label>
+          <input type="range" class="control-input" id="distConfSlider" min="0" max="100" value="50">
+          <span class="control-value" id="distSigmaDisplay">&#963; = —</span>
+        </div>
+        <div class="control-group trade-control-amount">
+          <label class="control-label">Amount</label>
+          <input type="number" class="control-input" id="distAmount" value="5000" min="1">
+        </div>
+        <div class="control-group trade-control-actions">
+          <label class="control-label">&nbsp;</label>
+          <div class="btn-group">
+            <button class="btn btn-success" onclick="executeDistTrade('buy')">Buy</button>
+            <button class="btn btn-danger" onclick="executeDistTrade('sell')">Sell</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Zoom hint -->
+    <!-- Interaction hints -->
     <div style="text-align:right;font-size:0.65rem;color:var(--text-muted);margin-bottom:4px;padding-right:4px;">
-      Scroll to zoom &middot; Drag to pan &middot; Hover axis to zoom/pan that axis only
+      Click chart: set &mu; &middot; Shift+drag: set &mu; &amp; &sigma; &middot; Scroll: zoom &middot; Drag: pan
     </div>
 
     <!-- Dual charts -->
@@ -294,18 +296,20 @@
   <div class="tab-content" id="tab-resolve">
     <div class="setup-card">
       <div class="setup-card-title">Resolution</div>
-      <div class="demo-controls" style="grid-template-columns: 1fr 1fr auto;">
-        <div class="control-group">
-          <label class="control-label">Resolve Value</label>
-          <input type="range" class="control-input" id="resolveSlider" min="0" max="100" value="50" step="0.1">
-        </div>
-        <div class="control-group">
-          <label class="control-label">Value</label>
-          <input type="number" class="control-input" id="resolveInput" value="50" step="0.1">
-        </div>
-        <div class="control-group" style="justify-content:flex-end;">
-          <label class="control-label">&nbsp;</label>
-          <button class="btn btn-primary" onclick="resolveMarket()" id="resolveBtn">Resolve</button>
+      <div class="trade-controls">
+        <div class="trade-controls-row">
+          <div class="control-group" style="flex:3;min-width:200px;">
+            <label class="control-label">Resolve Value</label>
+            <input type="range" class="control-input" id="resolveSlider" min="0" max="100" value="50" step="0.1">
+          </div>
+          <div class="control-group" style="flex:1;min-width:100px;">
+            <label class="control-label">Value</label>
+            <input type="number" class="control-input" id="resolveInput" value="50" step="0.1">
+          </div>
+          <div class="control-group" style="flex:0 0 auto;">
+            <label class="control-label">&nbsp;</label>
+            <button class="btn btn-primary" onclick="resolveMarket()" id="resolveBtn">Resolve</button>
+          </div>
         </div>
       </div>
       <div id="resolveKernelInfo" style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
@@ -855,6 +859,7 @@ function initCombinedDistChart() {
   for (var j = 0; j < dualMarket.current.N; j++) empty.push(0);
   var uniformProb = 1 / dualMarket.current.N;
   getOrCreateChart('distCombinedChart', buildCombinedDistChartConfig(labels, cProbs, iProbs, empty, empty.slice(), empty.slice(), uniformProb));
+  attachChartInteraction('distCombinedChart');
 }
 
 // --- P6-1: Refresh combined charts ---
@@ -960,6 +965,158 @@ Chart.register({
   }
 });
 
+// ============================================================
+// CHART CLICK-DRAG INTERACTION: Set mu/sigma from chart
+// ============================================================
+// Click: sets mu to clicked x-value
+// Shift+drag: sets mu to midpoint, sigma from drag range width
+// (Shift key prevents conflict with zoom plugin's pan)
+var _chartDrag = { active: false, startX: null, startLabel: null, chartId: null };
+
+function getXValueFromPixel(chart, pixelX) {
+  var xScale = chart.scales.x;
+  if (!xScale) return null;
+  var idx = xScale.getValueForPixel(pixelX);
+  if (idx == null || !dualMarket || !dualMarket.current) return null;
+  var binIdx = Math.round(idx);
+  binIdx = Math.max(0, Math.min(dualMarket.current.N - 1, binIdx));
+  return dualMarket.current.centers[binIdx];
+}
+
+function isInChartArea(chart, x, y) {
+  var area = chart.chartArea;
+  return area && x >= area.left && x <= area.right && y >= area.top && y <= area.bottom;
+}
+
+function chartInteractionMouseDown(e, chart) {
+  if (!dualMarket || !dualMarket.initialized) return;
+  var rect = chart.canvas.getBoundingClientRect();
+  var x = e.clientX - rect.left;
+  var y = e.clientY - rect.top;
+  if (!isInChartArea(chart, x, y)) return;
+
+  if (e.shiftKey) {
+    // Shift+drag to set mu+sigma — disable pan temporarily
+    _chartDrag.active = true;
+    _chartDrag.startX = x;
+    _chartDrag.startLabel = getXValueFromPixel(chart, x);
+    _chartDrag.chartId = chart.canvas.id;
+    // Disable zoom plugin pan while shift-dragging
+    if (chart.options.plugins.zoom && chart.options.plugins.zoom.pan) {
+      chart.options.plugins.zoom.pan.enabled = false;
+      chart.update('none');
+    }
+    e.preventDefault();
+  }
+  // If not shift, let zoom plugin handle the drag for pan
+}
+
+function chartInteractionMouseMove(e, chart) {
+  if (!_chartDrag.active || chart.canvas.id !== _chartDrag.chartId) return;
+  var area = chart.chartArea;
+  if (!area) return;
+  var rect = chart.canvas.getBoundingClientRect();
+  var x = Math.max(area.left, Math.min(area.right, e.clientX - rect.left));
+
+  var endVal = getXValueFromPixel(chart, x);
+  if (endVal == null || _chartDrag.startLabel == null) return;
+
+  var startVal = _chartDrag.startLabel;
+  var mu = (startVal + endVal) / 2;
+  var range = Math.abs(endVal - startVal);
+  var sigma = Math.max(range / 2, dualMarket.current.binWidth / 2);
+  setMuSigmaFromChart(mu, sigma);
+}
+
+function chartInteractionMouseUp(e, chart) {
+  if (_chartDrag.active) {
+    // Re-enable pan
+    if (chart.options.plugins.zoom && chart.options.plugins.zoom.pan) {
+      chart.options.plugins.zoom.pan.enabled = true;
+      chart.update('none');
+    }
+    _chartDrag.active = false;
+    return;
+  }
+}
+
+function chartInteractionClick(e, chart) {
+  if (!dualMarket || !dualMarket.initialized) return;
+  if (e.shiftKey) return; // shift was used for drag, ignore click
+  var rect = chart.canvas.getBoundingClientRect();
+  var x = e.clientX - rect.left;
+  var y = e.clientY - rect.top;
+  if (!isInChartArea(chart, x, y)) return;
+
+  var val = getXValueFromPixel(chart, x);
+  if (val != null) setMuFromChart(val);
+}
+
+function setMuFromChart(mu) {
+  if (!dualMarket || !dualMarket.current) return;
+  var min = dualMarket.current.rangeMin;
+  var max = dualMarket.current.rangeMax;
+  mu = Math.max(min, Math.min(max, mu));
+  document.getElementById('distMuSlider').value = mu;
+  document.getElementById('distMuInput').value = mu.toFixed(1);
+  updateDistLabels();
+  schedulePreview();
+}
+
+function setMuSigmaFromChart(mu, sigma) {
+  if (!dualMarket || !dualMarket.current) return;
+  var min = dualMarket.current.rangeMin;
+  var max = dualMarket.current.rangeMax;
+  mu = Math.max(min, Math.min(max, mu));
+  document.getElementById('distMuSlider').value = mu;
+  document.getElementById('distMuInput').value = mu.toFixed(1);
+
+  var range = max - min;
+  var maxSigma = range / 2;
+  var minSigma = range / (dualMarket.current.N * 2);
+  sigma = Math.max(minSigma, Math.min(maxSigma, sigma));
+  var conf = (maxSigma - sigma) / (maxSigma - minSigma) * 100;
+  conf = Math.max(0, Math.min(100, conf));
+  document.getElementById('distConfSlider').value = Math.round(conf);
+
+  updateDistLabels();
+  schedulePreview();
+}
+
+function attachChartInteraction(chartId) {
+  var canvas = document.getElementById(chartId);
+  if (!canvas || canvas._chartInteractionAttached) return;
+
+  canvas.addEventListener('mousedown', function (e) {
+    var chart = charts[chartId];
+    if (chart) chartInteractionMouseDown(e, chart);
+  });
+  canvas.addEventListener('mousemove', function (e) {
+    var chart = charts[chartId];
+    if (chart) chartInteractionMouseMove(e, chart);
+  });
+  canvas.addEventListener('mouseup', function (e) {
+    var chart = charts[chartId];
+    if (chart) chartInteractionMouseUp(e, chart);
+  });
+  canvas.addEventListener('mouseleave', function () {
+    if (_chartDrag.active) {
+      // Re-enable pan on leave
+      var chart = charts[chartId];
+      if (chart && chart.options.plugins.zoom && chart.options.plugins.zoom.pan) {
+        chart.options.plugins.zoom.pan.enabled = true;
+        chart.update('none');
+      }
+      _chartDrag.active = false;
+    }
+  });
+  canvas.addEventListener('click', function (e) {
+    var chart = charts[chartId];
+    if (chart) chartInteractionClick(e, chart);
+  });
+  canvas._chartInteractionAttached = true;
+}
+
 // --- P6-3: Combined stats (comparison table with delta column) ---
 function refreshCombinedDistStats(traderName) {
   if (!dualMarket || !dualMarket.current) return;
@@ -981,14 +1138,14 @@ function refreshCombinedDistStats(traderName) {
 
 function buildComparisonTableHtml(cp, ip) {
   var rows = [
-    { label: 'Vault (k)', c: dualMarket.current.k, i: dualMarket.improved.k },
-    { label: 'Wallet', c: cp.wallet, i: ip.wallet },
-    { label: 'Holdings', c: cp.totalHoldings, i: ip.totalHoldings },
-    { label: 'E[Payout]', c: cp.expectedPayout, i: ip.expectedPayout },
-    { label: 'Peak Payout', c: cp.peakPayout, i: ip.peakPayout },
-    { label: 'Spent', c: cp.totalSpent, i: ip.totalSpent },
-    { label: 'Received', c: cp.totalReceived, i: ip.totalReceived },
-    { label: 'Unreal. PnL', c: cp.unrealizedPnL, i: ip.unrealizedPnL },
+    { label: 'Vault (k)', c: dualMarket.current.k, i: dualMarket.improved.k, style: '' },
+    { label: 'Wallet', c: cp.wallet, i: ip.wallet, style: '' },
+    { label: 'Holdings', c: cp.totalHoldings, i: ip.totalHoldings, style: '' },
+    { label: 'E[Payout]', c: cp.expectedPayout, i: ip.expectedPayout, style: '' },
+    { label: 'Peak Payout', c: cp.peakPayout, i: ip.peakPayout, style: '' },
+    { label: 'Spent', c: cp.totalSpent, i: ip.totalSpent, style: 'color:var(--danger)' },
+    { label: 'Received', c: cp.totalReceived, i: ip.totalReceived, style: 'color:var(--success)' },
+    { label: 'Unreal. PnL', c: cp.unrealizedPnL, i: ip.unrealizedPnL, style: 'pnl' },
   ];
 
   var html = '<thead><tr>' +
@@ -1003,12 +1160,25 @@ function buildComparisonTableHtml(cp, ip) {
     var delta = row.i - row.c;
     var deltaClass = Math.abs(delta) < 0.005 ? '' : (delta >= 0 ? 'positive' : 'negative');
     var deltaSign = delta >= 0 ? '+' : '';
-    html += '<tr>' +
-      '<td style="font-weight:600;color:var(--text-heading);text-align:left;">' + row.label + '</td>' +
-      '<td class="col-current">' + formatCompact(row.c) + '</td>' +
-      '<td class="col-improved">' + formatCompact(row.i) + '</td>' +
-      '<td class="col-delta ' + deltaClass + '">' + deltaSign + formatCompact(delta) + '</td>' +
-      '</tr>';
+    var valStyle = '';
+    if (row.style === 'pnl') {
+      var cPnlClass = row.c >= 0 ? 'positive' : 'negative';
+      var iPnlClass = row.i >= 0 ? 'positive' : 'negative';
+      html += '<tr>' +
+        '<td style="font-weight:600;color:var(--text-heading);text-align:left;">' + row.label + '</td>' +
+        '<td class="col-delta ' + cPnlClass + '">' + formatPnl(row.c) + '</td>' +
+        '<td class="col-delta ' + iPnlClass + '">' + formatPnl(row.i) + '</td>' +
+        '<td class="col-delta ' + deltaClass + '">' + deltaSign + formatCompact(delta) + '</td>' +
+        '</tr>';
+    } else {
+      valStyle = row.style ? ' style="' + row.style + '"' : '';
+      html += '<tr>' +
+        '<td style="font-weight:600;color:var(--text-heading);text-align:left;">' + row.label + '</td>' +
+        '<td class="col-current"' + valStyle + '>' + formatCompact(row.c) + '</td>' +
+        '<td class="col-improved"' + valStyle + '>' + formatCompact(row.i) + '</td>' +
+        '<td class="col-delta ' + deltaClass + '">' + deltaSign + formatCompact(delta) + '</td>' +
+        '</tr>';
+    }
   }
 
   html += '</tbody>';
@@ -1491,6 +1661,8 @@ function initDistCharts() {
 
   getOrCreateChart('distCurrentChart', buildDistChartConfig(labels, cProbs, empty.slice(), empty.slice(), 'current'));
   getOrCreateChart('distImprovedChart', buildDistChartConfig(labels, iProbs, empty.slice(), empty.slice(), 'improved'));
+  attachChartInteraction('distCurrentChart');
+  attachChartInteraction('distImprovedChart');
 }
 
 function refreshDistCharts() {
@@ -1561,14 +1733,15 @@ function refreshDistStats(traderName) {
   function statsHtml(p, engine) {
     var k = engine === 'current' ? dualMarket.current.k : dualMarket.improved.k;
     var pnlClass = p.unrealizedPnL >= 0 ? 'positive' : 'negative';
+    var epClass = p.expectedPayout > p.totalSpent ? 'positive' : (p.expectedPayout < p.totalSpent && p.totalSpent > 0 ? 'negative' : '');
     return '' +
       '<div class="result-item"><div class="result-label">Vault (k)</div><div class="result-value">' + formatCompact(k) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Wallet</div><div class="result-value">' + formatCompact(p.wallet) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Holdings</div><div class="result-value">' + formatCompact(p.totalHoldings) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">E[Payout]</div><div class="result-value">' + formatCompact(p.expectedPayout) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">E[Payout]</div><div class="result-value ' + epClass + '">' + formatCompact(p.expectedPayout) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Peak Payout</div><div class="result-value">' + formatCompact(p.peakPayout) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Spent</div><div class="result-value">' + formatCompact(p.totalSpent) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Received</div><div class="result-value">' + formatCompact(p.totalReceived) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Spent</div><div class="result-value" style="color:var(--danger)">' + formatCompact(p.totalSpent) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Received</div><div class="result-value" style="color:var(--success)">' + formatCompact(p.totalReceived) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Unreal. PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(p.unrealizedPnL) + '</div></div>';
   }
 
@@ -1715,13 +1888,14 @@ function updatePreviewStats() {
 function buildPreviewStatsHtml(stats, labels) {
   var maxProfit = stats.maxPayout - stats.cost;
   var profitClass = maxProfit >= 0 ? 'positive' : 'negative';
+  var roi = stats.cost > 0 ? (maxProfit / stats.cost * 100).toFixed(1) : '0.0';
   return '' +
     '<div class="result-item"><div class="result-label">Tokens</div><div class="result-value">' + formatCompact(stats.total) + '</div></div>' +
     '<div class="result-item"><div class="result-label">Peak Bin</div><div class="result-value">' + labels[stats.peakBin] + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Max Payout</div><div class="result-value">' + formatCompact(stats.maxPayout) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Cost</div><div class="result-value">' + formatCompact(stats.cost) + '</div></div>' +
-    (stats.fee > 0 ? '<div class="result-item"><div class="result-label">Fee</div><div class="result-value">' + formatCompact(stats.fee) + '</div></div>' : '') +
-    '<div class="result-item"><div class="result-label">Max Profit</div><div class="result-value ' + profitClass + '">' + formatPnl(maxProfit) + '</div></div>';
+    '<div class="result-item"><div class="result-label">Max Payout</div><div class="result-value" style="color:var(--success)">' + formatCompact(stats.maxPayout) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Cost</div><div class="result-value" style="color:var(--danger)">' + formatCompact(stats.cost) + '</div></div>' +
+    (stats.fee > 0 ? '<div class="result-item"><div class="result-label">Fee</div><div class="result-value" style="color:var(--warning)">' + formatCompact(stats.fee) + '</div></div>' : '') +
+    '<div class="result-item"><div class="result-label">Max Profit</div><div class="result-value ' + profitClass + '">' + formatPnl(maxProfit) + ' (' + roi + '%)</div></div>';
 }
 
 function buildPreviewComparisonHtml(cStats, iStats, labels) {
@@ -1877,15 +2051,16 @@ function renderResolveSummary(result, value) {
   var traderDeltaClass = traderDelta >= 0 ? 'positive' : 'negative';
   var traderDeltaSign = traderDelta >= 0 ? '+' : '';
 
+  var solvencyClass = result.improved.claimScale >= 1 ? 'positive' : 'negative';
   grid.innerHTML = '' +
     '<div class="result-item"><div class="result-label">Resolve Value</div><div class="result-value">' + value.toFixed(1) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Winning Bin</div><div class="result-value">' + winBin + ' (' + label + ')</div></div>' +
+    '<div class="result-item"><div class="result-label">Winning Bin</div><div class="result-value" style="color:var(--success)">' + winBin + ' (' + label + ')</div></div>' +
     '<div class="result-item"><div class="result-label">Vault (k)</div><div class="result-value">' + formatCompact(dualMarket.current.k) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Solvency Factor</div><div class="result-value">' + (result.improved.claimScale * 100).toFixed(2) + '%</div></div>' +
-    '<div class="result-item"><div class="result-label">WTA Trader Payouts</div><div class="result-value">' + formatCompact(cTraderTotal) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Kernel Trader Payouts</div><div class="result-value">' + formatCompact(iTraderTotal) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Current LP Residual</div><div class="result-value">' + formatCompact(result.current.lpResidual) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Improved LP Residual</div><div class="result-value">' + formatCompact(result.improved.lpResidual) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Solvency Factor</div><div class="result-value ' + solvencyClass + '">' + (result.improved.claimScale * 100).toFixed(2) + '%</div></div>' +
+    '<div class="result-item"><div class="result-label">WTA Trader Payouts</div><div class="result-value" style="color:var(--primary-light)">' + formatCompact(cTraderTotal) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Kernel Trader Payouts</div><div class="result-value" style="color:var(--accent)">' + formatCompact(iTraderTotal) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Current LP Residual</div><div class="result-value" style="color:var(--primary-light)">' + formatCompact(result.current.lpResidual) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Improved LP Residual</div><div class="result-value" style="color:var(--accent)">' + formatCompact(result.improved.lpResidual) + '</div></div>' +
     '<div class="result-item"><div class="result-label">Trader Delta (I-C)</div><div class="result-value ' + traderDeltaClass + '">' + traderDeltaSign + formatCompact(traderDelta) + '</div></div>';
 }
 

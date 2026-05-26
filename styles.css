@@ -246,6 +246,22 @@ html.theme-light .navbar {
 
 .control-group { display: flex; flex-direction: column; gap: 4px; }
 
+/* Trade controls — aligned row layout */
+.trade-controls {
+  margin-bottom: 20px;
+}
+.trade-controls-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.trade-control-mu { flex: 2; min-width: 180px; }
+.trade-control-conf { flex: 2; min-width: 180px; }
+.trade-control-amount { flex: 1; min-width: 120px; }
+.trade-control-actions { flex: 0 0 auto; }
+.trade-control-actions .btn-group { white-space: nowrap; }
+
 .control-label {
   font-size: 0.72rem;
   font-weight: 600;
@@ -940,6 +956,8 @@ select.control-input { cursor: pointer; }
   .formula-banner .formula-sep { display: none; }
   .demo-controls { grid-template-columns: 1fr 1fr; }
   .demo-controls[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+  .trade-controls-row { flex-direction: column; gap: 12px; }
+  .trade-control-mu, .trade-control-conf, .trade-control-amount, .trade-control-actions { flex: none !important; min-width: 0 !important; width: 100%; }
   .result-grid { grid-template-columns: 1fr 1fr; }
   .chart-container { height: 260px; }
   .playground-toolbar { padding: 8px 10px; gap: 6px; }
