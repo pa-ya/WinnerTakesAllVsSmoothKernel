@@ -142,8 +142,8 @@ Show the key differing formulas at the top of each market column:
 
 > **Goal:** Allow users to drag on chart axes to zoom/pan.
 
-- [x] **P7-1:** Y-axis drag to zoom
-- [x] **P7-2:** X-axis drag to pan/zoom (scroll wheel, box-zoom drag, shift+drag pan)
+- [x] **P7-1:** Y-axis zoom (scroll wheel near axis, overScaleMode)
+- [x] **P7-2:** X-axis zoom/pan (scroll wheel, drag to pan, overScaleMode for per-axis control)
 - [x] **P7-3:** Implementation: chartjs-plugin-zoom + Hammer.js, reset zoom buttons per chart
 
 ---

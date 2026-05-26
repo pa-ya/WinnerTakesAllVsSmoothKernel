@@ -6,12 +6,12 @@
 <title>DekantPM — Market Comparison</title>
 
 <!-- Fonts -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="vendor/fonts.css" rel="stylesheet">
 
 <!-- Chart.js + Zoom plugin (requires Hammer.js for touch/drag) -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-<script src="https://cdn.jsdelivr.net/npm/hammerjs@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2"></script>
+<script src="vendor/chart.min.js"></script>
+<script src="vendor/hammer.min.js"></script>
+<script src="vendor/chartjs-plugin-zoom.min.js"></script>
 
 <style>
 /* ============================================================
@@ -1063,7 +1063,7 @@ select.control-input { cursor: pointer; }
 
     <!-- Zoom hint -->
     <div style="text-align:right;font-size:0.65rem;color:var(--text-muted);margin-bottom:4px;padding-right:4px;">
-      Scroll to zoom &middot; Drag to box-zoom &middot; Shift+drag to pan
+      Scroll to zoom &middot; Drag to pan &middot; Hover axis to zoom/pan that axis only
     </div>
 
     <!-- Dual charts -->
@@ -1341,20 +1341,20 @@ var charts = {};  // { chartId: Chart instance }
 function getZoomPluginConfig() {
   return {
     zoom: {
-      wheel: { enabled: true, modifierKey: null },
-      drag: { enabled: true, backgroundColor: 'rgba(99,102,241,0.15)', borderColor: 'rgba(99,102,241,0.5)', borderWidth: 1 },
+      wheel: { enabled: true },
       pinch: { enabled: true },
       mode: 'xy',
+      overScaleMode: 'xy',
     },
     pan: {
       enabled: true,
       mode: 'xy',
-      modifierKey: 'shift',
+      overScaleMode: 'xy',
     },
     limits: {
+      x: { minRange: 2 },
       yProb: { min: 0 },
       yPos: { min: 0 },
-      y: { min: 0 },
     },
   };
 }
@@ -1384,14 +1384,13 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
   var uniformData = [];
   for (var j = 0; j < labels.length; j++) uniformData.push(uniformProb);
   return {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: labels,
       datasets: [
         {
           label: 'Current Probability',
           data: cProbs,
-          type: 'line',
           borderColor: colors.primary,
           backgroundColor: colors.primary + '18',
           borderWidth: 2.5,
@@ -1406,7 +1405,6 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
         {
           label: 'Improved Probability',
           data: iProbs,
-          type: 'line',
           borderColor: colors.accent,
           backgroundColor: colors.accent + '18',
           borderWidth: 2.5,
@@ -1421,9 +1419,13 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
         {
           label: 'Holdings',
           data: holdings,
-          backgroundColor: colors.warning + '55',
           borderColor: colors.warning,
-          borderWidth: 1,
+          backgroundColor: colors.warning + '33',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          fill: true,
+          tension: 0.3,
           yAxisID: 'yPos',
           order: 4,
           _datasetKey: 'pos',
@@ -1431,7 +1433,6 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
         {
           label: 'Current Preview',
           data: cPreview,
-          type: 'line',
           borderColor: colors.primary,
           backgroundColor: colors.primary + '15',
           borderWidth: 2,
@@ -1446,7 +1447,6 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
         {
           label: 'Improved Preview',
           data: iPreview,
-          type: 'line',
           borderColor: colors.accent,
           backgroundColor: colors.accent + '15',
           borderWidth: 2,
@@ -1461,7 +1461,6 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
         {
           label: 'Uniform',
           data: uniformData,
-          type: 'line',
           borderColor: colors.textMuted,
           borderWidth: 1,
           borderDash: [4, 4],
@@ -1990,14 +1989,13 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
   var probColor = colorScheme === 'improved' ? colors.accent : colors.primary;
   var posColor = colors.warning;
   return {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: labels,
       datasets: [
         {
           label: 'Probability',
           data: probData,
-          type: 'line',
           borderColor: probColor,
           backgroundColor: probColor + '22',
           borderWidth: 2,
@@ -2012,9 +2010,13 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
         {
           label: 'Holdings',
           data: posData,
-          backgroundColor: posColor + '55',
           borderColor: posColor,
-          borderWidth: 1,
+          backgroundColor: posColor + '33',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          fill: true,
+          tension: 0.3,
           yAxisID: 'yPos',
           order: 3,
           _datasetKey: 'pos',
@@ -2022,7 +2024,6 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
         {
           label: 'Preview',
           data: previewData,
-          type: 'line',
           borderColor: colors.purple,
           backgroundColor: colors.purple + '22',
           borderWidth: 2,
