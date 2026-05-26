@@ -152,11 +152,11 @@ Show the key differing formulas at the top of each market column:
 
 > **Goal:** Settings panel, theme support, final polish.
 
-- [ ] **P8-1:** Settings modal (font size, number format, decimal precision, theme)
-- [ ] **P8-2:** Toast notification system
-- [ ] **P8-3:** Responsive design review
-- [ ] **P8-4:** Visual polish (color-coded labels, hover states, transitions)
-- [ ] **P8-5:** Performance considerations (debounce, animation disable for large N)
+- [x] **P8-1:** Settings modal (font size, number format, decimal precision, theme)
+- [x] **P8-2:** Toast notification system
+- [x] **P8-3:** Responsive design review
+- [x] **P8-4:** Visual polish (color-coded labels, hover states, transitions)
+- [x] **P8-5:** Performance considerations (debounce, animation disable for large N)
 
 ---
 
@@ -217,7 +217,7 @@ Source code to port/adapt from:
 | P5 | Done | Resolve tab | P0, P1, P2 |
 | P6 | Done | Combined chart mode | P3 or P4 |
 | P7 | Done | Chart zoom/pan interactivity | P4 |
-| P8 | | Settings & polish | All above |
+| P8 | Done | Settings & polish | All above |
 
 **P0 and P1 can be developed in parallel** (engine vs layout).
 **P3, P4, P5 can be developed in any order** after P2.

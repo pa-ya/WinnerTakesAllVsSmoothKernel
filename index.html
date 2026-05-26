@@ -590,6 +590,7 @@ function getOrCreateChart(canvasId, config) {
 // --- P6-1: Combined chart config builders ---
 function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview, iPreview, uniformProb) {
   var colors = getChartColors();
+  var large = isLargeMarket();
   var uniformData = [];
   for (var j = 0; j < labels.length; j++) uniformData.push(uniformProb);
   return {
@@ -604,9 +605,9 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
           backgroundColor: colors.primary + '18',
           borderWidth: 2.5,
           pointRadius: 0,
-          pointHoverRadius: 4,
+          pointHoverRadius: large ? 0 : 4,
           fill: false,
-          tension: 0.3,
+          tension: large ? 0 : 0.3,
           yAxisID: 'yProb',
           order: 1,
           _datasetKey: 'cProb',
@@ -618,9 +619,9 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
           backgroundColor: colors.accent + '18',
           borderWidth: 2.5,
           pointRadius: 0,
-          pointHoverRadius: 4,
+          pointHoverRadius: large ? 0 : 4,
           fill: false,
-          tension: 0.3,
+          tension: large ? 0 : 0.3,
           yAxisID: 'yProb',
           order: 1,
           _datasetKey: 'iProb',
@@ -632,9 +633,9 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
           backgroundColor: colors.warning + '33',
           borderWidth: 1.5,
           pointRadius: 0,
-          pointHoverRadius: 3,
-          fill: true,
-          tension: 0.3,
+          pointHoverRadius: large ? 0 : 3,
+          fill: !large,
+          tension: large ? 0 : 0.3,
           yAxisID: 'yPos',
           order: 4,
           _datasetKey: 'pos',
@@ -648,7 +649,7 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
           pointRadius: 0,
           borderDash: [6, 3],
           fill: false,
-          tension: 0.3,
+          tension: large ? 0 : 0.3,
           yAxisID: 'yPos',
           order: 2,
           _datasetKey: 'cPreview',
@@ -662,7 +663,7 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
           pointRadius: 0,
           borderDash: [6, 3],
           fill: false,
-          tension: 0.3,
+          tension: large ? 0 : 0.3,
           yAxisID: 'yPos',
           order: 2,
           _datasetKey: 'iPreview',
@@ -1155,11 +1156,17 @@ function updateDistLabels() {
   document.getElementById('distSigmaLabel').textContent = '(' + conf + '%)';
 }
 
+// Debounced preview for large markets (>= 128 bins)
+var _debouncedPreview = debounce(function () { updateDistPreview(); }, 30);
+function schedulePreview() {
+  if (isLargeMarket()) { _debouncedPreview(); } else { updateDistPreview(); }
+}
+
 // Mu slider <-> input sync
 document.getElementById('distMuSlider').addEventListener('input', function () {
   document.getElementById('distMuInput').value = this.value;
   updateDistLabels();
-  updateDistPreview();
+  schedulePreview();
 });
 document.getElementById('distMuInput').addEventListener('input', function () {
   var min = parseFloat(document.getElementById('distMuSlider').min);
@@ -1171,18 +1178,18 @@ document.getElementById('distMuInput').addEventListener('input', function () {
   }
   document.getElementById('distMuSlider').value = this.value;
   updateDistLabels();
-  updateDistPreview();
+  schedulePreview();
 });
 
 // Confidence slider updates sigma display + preview
 document.getElementById('distConfSlider').addEventListener('input', function () {
   updateDistLabels();
-  updateDistPreview();
+  schedulePreview();
 });
 
 // Amount change updates preview
 document.getElementById('distAmount').addEventListener('input', function () {
-  updateDistPreview();
+  schedulePreview();
 });
 
 // Resolve slider <-> input sync
@@ -1200,6 +1207,7 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
   var colors = getChartColors();
   var probColor = colorScheme === 'improved' ? colors.accent : colors.primary;
   var posColor = colors.warning;
+  var large = isLargeMarket();
   return {
     type: 'line',
     data: {
@@ -1212,9 +1220,9 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
           backgroundColor: probColor + '22',
           borderWidth: 2,
           pointRadius: 0,
-          pointHoverRadius: 4,
-          fill: true,
-          tension: 0.3,
+          pointHoverRadius: large ? 0 : 4,
+          fill: !large,
+          tension: large ? 0 : 0.3,
           yAxisID: 'yProb',
           order: 1,
           _datasetKey: 'prob',
@@ -1226,9 +1234,9 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
           backgroundColor: posColor + '33',
           borderWidth: 1.5,
           pointRadius: 0,
-          pointHoverRadius: 3,
-          fill: true,
-          tension: 0.3,
+          pointHoverRadius: large ? 0 : 3,
+          fill: !large,
+          tension: large ? 0 : 0.3,
           yAxisID: 'yPos',
           order: 3,
           _datasetKey: 'pos',
@@ -1241,8 +1249,8 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
           borderWidth: 2,
           pointRadius: 0,
           borderDash: [6, 3],
-          fill: true,
-          tension: 0.3,
+          fill: !large,
+          tension: large ? 0 : 0.3,
           yAxisID: 'yPos',
           order: 2,
           _datasetKey: 'preview',

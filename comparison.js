@@ -56,6 +56,19 @@ function applyFontSize(size) {
 // ============================================================
 // 4. UTILITIES
 // ============================================================
+function debounce(fn, ms) {
+  var timer;
+  return function () {
+    var ctx = this, args = arguments;
+    clearTimeout(timer);
+    timer = setTimeout(function () { fn.apply(ctx, args); }, ms);
+  };
+}
+
+function isLargeMarket() {
+  return dualMarket && dualMarket.current && dualMarket.current.N >= 128;
+}
+
 function formatCompact(n) {
   if (n == null || isNaN(n)) return '—';
   var abs = Math.abs(n);
