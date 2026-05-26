@@ -143,7 +143,10 @@
         </div>
         <div class="control-group" style="justify-content:flex-end;">
           <label class="control-label">&nbsp;</label>
-          <button class="btn btn-accent" onclick="addTrader()">Add Trader</button>
+          <div class="btn-group">
+            <button class="btn btn-accent" onclick="addTrader()">Add Trader</button>
+            <button class="btn btn-sm btn-outline" onclick="resetTraders()" style="color:var(--danger);">Reset</button>
+          </div>
         </div>
       </div>
       <div class="trader-list" id="traderList">
@@ -219,9 +222,9 @@
         <div class="chart-panel-header">
           <span class="chart-panel-title">Current (Quadratic WTA)</span>
           <div class="chart-toggles">
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','prob',this.checked)"> Probability</label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','pos',this.checked)"> Position</label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','preview',this.checked)"> Preview</label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','prob',this.checked)"><span class="curve-dot" style="background:var(--primary)"></span> Probability</label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','pos',this.checked)"><span class="curve-dot" style="background:var(--warning)"></span> Holdings</label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','preview',this.checked)"><span class="curve-dot" style="background:var(--purple)"></span> Preview</label>
             <button class="btn-reset-zoom" onclick="resetZoom('distCurrentChart')" title="Reset zoom">&#x21BA;</button>
           </div>
         </div>
@@ -231,9 +234,9 @@
         <div class="chart-panel-header">
           <span class="chart-panel-title">Improved (Linear Kernel)</span>
           <div class="chart-toggles">
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','prob',this.checked)"> Probability</label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','pos',this.checked)"> Position</label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','preview',this.checked)"> Preview</label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','prob',this.checked)"><span class="curve-dot" style="background:var(--accent)"></span> Probability</label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','pos',this.checked)"><span class="curve-dot" style="background:var(--warning)"></span> Holdings</label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','preview',this.checked)"><span class="curve-dot" style="background:var(--purple)"></span> Preview</label>
             <button class="btn-reset-zoom" onclick="resetZoom('distImprovedChart')" title="Reset zoom">&#x21BA;</button>
           </div>
         </div>
@@ -243,17 +246,33 @@
         <div class="chart-panel-header">
           <span class="chart-panel-title">Combined Comparison</span>
           <div class="chart-toggles">
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cProb',this.checked)"> <span style="color:var(--primary-light)">Current P</span></label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','iProb',this.checked)"> <span style="color:var(--accent)">Improved P</span></label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','pos',this.checked)"> Holdings</label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cPreview',this.checked)"> <span style="color:var(--primary-light)">C Preview</span></label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','iPreview',this.checked)"> <span style="color:var(--accent)">I Preview</span></label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','uniform',this.checked)"> Uniform</label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cProb',this.checked)"><span class="curve-dot" style="background:var(--primary)"></span> <span style="color:var(--primary-light)">Current P</span></label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','iProb',this.checked)"><span class="curve-dot" style="background:var(--accent)"></span> <span style="color:var(--accent)">Improved P</span></label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','pos',this.checked)"><span class="curve-dot" style="background:var(--warning)"></span> Holdings</label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cPreview',this.checked)"><span class="curve-dot" style="background:var(--primary);opacity:0.6"></span> <span style="color:var(--primary-light)">C Preview</span></label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','iPreview',this.checked)"><span class="curve-dot" style="background:var(--accent);opacity:0.6"></span> <span style="color:var(--accent)">I Preview</span></label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','uniform',this.checked)"><span class="curve-dot" style="background:var(--text-muted)"></span> Uniform</label>
             <button class="btn-reset-zoom" onclick="resetZoom('distCombinedChart')" title="Reset zoom">&#x21BA;</button>
           </div>
         </div>
         <div class="chart-container"><canvas id="distCombinedChart"></canvas></div>
       </div>
+    </div>
+
+    <!-- Trade Preview Stats (dynamically updated with preview curve) -->
+    <div class="dual-stats" id="distPreviewStats" style="display:none;">
+      <div class="stats-panel" style="border-top: 2px solid var(--purple);">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">Trade Preview — Current (WTA)</div>
+        <div class="result-grid" id="distPreviewCurrentGrid"></div>
+      </div>
+      <div class="stats-panel" style="border-top: 2px solid var(--purple);">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">Trade Preview — Improved (Kernel)</div>
+        <div class="result-grid" id="distPreviewImprovedGrid"></div>
+      </div>
+    </div>
+    <div class="stats-panel" id="distPreviewCombined" style="display:none;border-top:2px solid var(--purple);margin-bottom:16px;">
+      <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">Trade Preview</div>
+      <table class="comparison-table" id="distPreviewComparisonTable"></table>
     </div>
 
     <div class="dual-stats" id="distStats">
@@ -468,12 +487,22 @@ function applyChartMode() {
   if (dStats) dStats.style.display = isCombined ? 'none' : '';
   if (dStatsCombined) dStatsCombined.style.display = isCombined ? '' : 'none';
 
+  // Preview stats: swap split/combined visibility
+  var previewSplit = document.getElementById('distPreviewStats');
+  var previewCombined = document.getElementById('distPreviewCombined');
+  if (previewSplit && isCombined) previewSplit.style.display = 'none';
+  if (previewCombined && !isCombined) previewCombined.style.display = 'none';
+
   // Refresh combined content when switching to combined mode
   if (isCombined && dualMarket && dualMarket.initialized) {
     refreshCombinedDistChart();
     updateCombinedDistPreview();
     var distTraderName = document.getElementById('distTraderSelect').value;
     refreshCombinedDistStats(distTraderName);
+  }
+  // Update preview stats for current mode
+  if (dualMarket && dualMarket.initialized && typeof updatePreviewStats === 'function') {
+    updatePreviewStats();
   }
 
   setTimeout(function () { resizeVisibleCharts(); }, 50);
@@ -528,6 +557,9 @@ function syncChartYAxes(chart) {
       chart.options.scales.yPos.min = 0;
       chart.options.scales.yPos.max = yPosMax > 0 ? yPosMax * 1.15 : undefined;
     }
+    // Reset Y-axis link base ranges since data changed
+    chart._yAxisBase = null;
+    chart._yAxisPrev = null;
   } else {
     // Freeze: capture current rendered axis bounds
     if (chart.scales && chart.scales.yProb) {
@@ -554,11 +586,13 @@ function getZoomPluginConfig() {
       pinch: { enabled: true },
       mode: 'xy',
       overScaleMode: 'xy',
+      onZoom: function (ctx) { syncLinkedYAxes(ctx.chart); },
     },
     pan: {
       enabled: true,
       mode: 'xy',
       overScaleMode: 'xy',
+      onPan: function (ctx) { syncLinkedYAxes(ctx.chart); },
     },
     limits: {
       x: { minRange: 2 },
@@ -570,7 +604,90 @@ function getZoomPluginConfig() {
 
 function resetZoom(chartId) {
   var chart = charts[chartId];
-  if (chart) chart.resetZoom();
+  if (chart) {
+    chart.resetZoom();
+    chart._yAxisBase = null;
+    chart._yAxisPrev = null;
+  }
+}
+
+// ============================================================
+// Y-AXIS LINKED ZOOM/PAN
+// ============================================================
+// When user zooms/pans one Y axis (yProb or yPos), proportionally
+// adjust the other so all curves zoom/pan together.
+var _yAxisSyncing = {};
+
+function initYAxisBase(chart) {
+  if (!chart.scales || !chart.scales.yProb || !chart.scales.yPos) return;
+  chart._yAxisBase = {
+    yProb: { min: chart.scales.yProb.min, max: chart.scales.yProb.max },
+    yPos: { min: chart.scales.yPos.min, max: chart.scales.yPos.max },
+  };
+  chart._yAxisPrev = {
+    yProb: { min: chart.scales.yProb.min, max: chart.scales.yProb.max },
+    yPos: { min: chart.scales.yPos.min, max: chart.scales.yPos.max },
+  };
+}
+
+function syncLinkedYAxes(chart) {
+  var id = chart.canvas ? chart.canvas.id : '';
+  if (_yAxisSyncing[id]) return;
+
+  var yProb = chart.scales.yProb;
+  var yPos = chart.scales.yPos;
+  if (!yProb || !yPos) return;
+
+  // Initialize base ranges on first zoom/pan
+  if (!chart._yAxisBase || !chart._yAxisPrev) {
+    initYAxisBase(chart);
+    return;
+  }
+
+  var prev = chart._yAxisPrev;
+  var base = chart._yAxisBase;
+  var baseProbRange = base.yProb.max - base.yProb.min;
+  var basePosRange = base.yPos.max - base.yPos.min;
+  if (baseProbRange <= 0 || basePosRange <= 0) return;
+
+  // Detect which axis changed
+  var probDiff = Math.abs(yProb.min - prev.yProb.min) + Math.abs(yProb.max - prev.yProb.max);
+  var posDiff = Math.abs(yPos.min - prev.yPos.min) + Math.abs(yPos.max - prev.yPos.max);
+
+  var needsUpdate = false;
+  _yAxisSyncing[id] = true;
+
+  if (probDiff > 1e-8 && posDiff < 1e-4) {
+    // yProb changed -> sync yPos proportionally
+    var zoomRatio = (yProb.max - yProb.min) / baseProbRange;
+    var panFrac = ((yProb.min + yProb.max) / 2 - (base.yProb.min + base.yProb.max) / 2) / baseProbRange;
+    var newPosRange = basePosRange * zoomRatio;
+    var newPosMid = (base.yPos.min + base.yPos.max) / 2 + panFrac * basePosRange;
+    chart.options.scales.yPos.min = Math.max(0, newPosMid - newPosRange / 2);
+    chart.options.scales.yPos.max = newPosMid + newPosRange / 2;
+    needsUpdate = true;
+  } else if (posDiff > 0.01 && probDiff < 1e-6) {
+    // yPos changed -> sync yProb proportionally
+    var zoomRatio = (yPos.max - yPos.min) / basePosRange;
+    var panFrac = ((yPos.min + yPos.max) / 2 - (base.yPos.min + base.yPos.max) / 2) / basePosRange;
+    var newProbRange = baseProbRange * zoomRatio;
+    var newProbMid = (base.yProb.min + base.yProb.max) / 2 + panFrac * baseProbRange;
+    chart.options.scales.yProb.min = Math.max(0, newProbMid - newProbRange / 2);
+    chart.options.scales.yProb.max = newProbMid + newProbRange / 2;
+    needsUpdate = true;
+  }
+
+  if (needsUpdate) {
+    chart.update('none');
+  }
+
+  // Update prev to current rendered values
+  chart._yAxisPrev = {
+    yProb: { min: chart.scales.yProb.min, max: chart.scales.yProb.max },
+    yPos: { min: chart.scales.yPos.min, max: chart.scales.yPos.max },
+  };
+
+  _yAxisSyncing[id] = false;
 }
 
 function getOrCreateChart(canvasId, config) {
@@ -988,6 +1105,29 @@ document.getElementById('settingsModal').addEventListener('click', function (e) 
 // ============================================================
 var marketCreated = false;
 
+// --- Trader Registry (persisted in localStorage, independent of market) ---
+var traderRegistry = [];
+
+function saveTraderRegistry() {
+  try {
+    localStorage.setItem('dekantpm_trader_registry_v1', JSON.stringify(traderRegistry));
+  } catch (e) { /* ignore */ }
+}
+
+function loadTraderRegistry() {
+  try {
+    var raw = localStorage.getItem('dekantpm_trader_registry_v1');
+    if (raw) traderRegistry = JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+}
+
+function registerTradersWithMarket() {
+  if (!dualMarket || !dualMarket.initialized) return;
+  for (var i = 0; i < traderRegistry.length; i++) {
+    dualMarket.addTrader(traderRegistry[i].name, traderRegistry[i].balance);
+  }
+}
+
 function createMarket() {
   var N = parseInt(document.getElementById('setupBins').value, 10);
   var rangeMin = parseFloat(document.getElementById('setupRangeMin').value);
@@ -1013,6 +1153,9 @@ function createMarket() {
     lpFeeSharePct: lpFeeSharePct,
     redemptionFeeBps: redemptionFeeBps,
   }, kernelWidth);
+
+  // Re-register all traders from persistent registry (with fresh wallets)
+  registerTradersWithMarket();
 
   marketCreated = true;
 
@@ -1042,6 +1185,12 @@ function createMarket() {
   document.getElementById('payoutTableWrapper').style.display = 'none';
   document.getElementById('kernelVizCard').style.display = 'none';
 
+  // Hide preview stats
+  var ps = document.getElementById('distPreviewStats');
+  var pc = document.getElementById('distPreviewCombined');
+  if (ps) ps.style.display = 'none';
+  if (pc) pc.style.display = 'none';
+
   // Enable trading tabs
   enableTradingTabs();
 
@@ -1049,7 +1198,7 @@ function createMarket() {
   initDistCharts();
   initCombinedDistChart();
 
-  // Reset trader list and selectors (in case market was re-created)
+  // Refresh trader list and selectors
   renderTraderList();
   updateTraderSelectors();
 
@@ -1057,8 +1206,6 @@ function createMarket() {
 }
 
 function addTrader() {
-  if (!marketCreated) return showToast('Create a market first', 'error');
-
   var nameEl = document.getElementById('traderName');
   var balanceEl = document.getElementById('traderBalance');
   var name = nameEl.value.trim();
@@ -1067,8 +1214,18 @@ function addTrader() {
   if (!name) return showToast('Trader name is required', 'error');
   if (isNaN(balance) || balance <= 0) return showToast('Balance must be > 0', 'error');
 
-  var result = dualMarket.addTrader(name, balance);
-  if (result.error) return showToast(result.error, 'error');
+  // Check registry for duplicates
+  for (var i = 0; i < traderRegistry.length; i++) {
+    if (traderRegistry[i].name === name) return showToast('Trader already exists: ' + name, 'error');
+  }
+
+  traderRegistry.push({ name: name, balance: balance });
+  saveTraderRegistry();
+
+  // Also register with current market if it exists
+  if (dualMarket && dualMarket.initialized) {
+    dualMarket.addTrader(name, balance);
+  }
 
   nameEl.value = '';
   renderTraderList();
@@ -1076,7 +1233,26 @@ function addTrader() {
   showToast('Added trader: ' + name + ' ($' + formatCompact(balance) + ')', 'info');
 }
 
+function removeTrader(name) {
+  traderRegistry = traderRegistry.filter(function (t) { return t.name !== name; });
+  saveTraderRegistry();
+  renderTraderList();
+  updateTraderSelectors();
+  showToast('Removed trader: ' + name, 'info');
+}
+
+function resetTraders() {
+  if (traderRegistry.length === 0) return showToast('No traders to reset', 'info');
+  if (!confirm('Reset all traders? This clears the trader list.')) return;
+  traderRegistry = [];
+  saveTraderRegistry();
+  renderTraderList();
+  updateTraderSelectors();
+  showToast('Trader list cleared', 'info');
+}
+
 function topUpTrader(name) {
+  if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first to top up traders', 'error');
   var amount = prompt('Top-up amount for ' + name + ':');
   if (!amount) return;
   amount = parseFloat(amount);
@@ -1093,27 +1269,33 @@ function topUpTrader(name) {
 
 function renderTraderList() {
   var container = document.getElementById('traderList');
-  var traders = dualMarket ? dualMarket.traders : {};
-  var names = Object.keys(traders);
-  if (names.length === 0) {
+  if (traderRegistry.length === 0) {
     container.innerHTML = '<div class="empty-state" style="padding:20px;"><div class="empty-state-text">No traders yet</div></div>';
     return;
   }
   var html = '';
-  for (var i = 0; i < names.length; i++) {
-    var n = names[i];
-    var t = traders[n];
+  for (var i = 0; i < traderRegistry.length; i++) {
+    var reg = traderRegistry[i];
+    var n = reg.name;
+    var walletInfo = '';
+    if (dualMarket && dualMarket.initialized && dualMarket.traders[n]) {
+      var t = dualMarket.traders[n];
+      walletInfo = 'C: $' + formatCompact(t.currentWallet) + ' | I: $' + formatCompact(t.improvedWallet);
+    } else {
+      walletInfo = 'Balance: $' + formatCompact(reg.balance);
+    }
     html += '<div class="trader-row">' +
       '<span class="trader-name">' + n + '</span>' +
-      '<span class="trader-wallet">C: $' + formatCompact(t.currentWallet) + ' | I: $' + formatCompact(t.improvedWallet) + '</span>' +
+      '<span class="trader-wallet">' + walletInfo + '</span>' +
       '<button class="btn btn-sm btn-outline" onclick="topUpTrader(\'' + n.replace(/'/g, "\\'") + '\')">Top Up</button>' +
+      '<button class="btn btn-sm btn-outline" onclick="removeTrader(\'' + n.replace(/'/g, "\\'") + '\')" title="Remove" style="color:var(--danger);padding:4px 8px;">&times;</button>' +
       '</div>';
   }
   container.innerHTML = html;
 }
 
 function updateTraderSelectors() {
-  var names = dualMarket ? Object.keys(dualMarket.traders) : [];
+  var names = traderRegistry.map(function (t) { return t.name; });
   var selectors = [
     document.getElementById('distTraderSelect'),
   ];
@@ -1248,6 +1430,7 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
           backgroundColor: colors.purple + '22',
           borderWidth: 2,
           pointRadius: 0,
+          pointHoverRadius: large ? 0 : 3,
           borderDash: [6, 3],
           fill: !large,
           tension: large ? 0 : 0.3,
@@ -1288,7 +1471,7 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
         },
         yPos: {
           type: 'linear', position: 'right',
-          title: { display: true, text: 'Holdings', color: colors.textMuted, font: { size: 10 } },
+          title: { display: true, text: 'Holdings / Preview', color: colors.textMuted, font: { size: 10 } },
           ticks: { color: colors.textMuted, font: { size: 9 } },
           grid: { drawOnChartArea: false },
           min: 0,
@@ -1329,10 +1512,15 @@ function refreshDistCharts() {
     if (iTh) iHoldings = iTh.holdings.slice();
   }
 
+  // Zero out preview to avoid stale flicker before updateDistPreview re-fills it
+  var empty = [];
+  for (var e = 0; e < dualMarket.current.N; e++) empty.push(0);
+
   var cc = charts['distCurrentChart'];
   if (cc) {
     cc.data.datasets[0].data = cProbs;
     cc.data.datasets[1].data = cHoldings;
+    if (cc.data.datasets[2]) cc.data.datasets[2].data = empty.slice();
     syncChartYAxes(cc);
     cc.update('none');
   }
@@ -1340,13 +1528,14 @@ function refreshDistCharts() {
   if (ic) {
     ic.data.datasets[0].data = iProbs;
     ic.data.datasets[1].data = iHoldings;
+    if (ic.data.datasets[2]) ic.data.datasets[2].data = empty.slice();
     syncChartYAxes(ic);
     ic.update('none');
   }
 
   refreshDistStats(traderName);
-  updateDistPreview();
   refreshCombinedDistChart();
+  updateDistPreview();
   refreshCombinedDistStats(traderName);
 }
 
@@ -1443,6 +1632,141 @@ function updateDistPreview() {
   }
 
   updateCombinedDistPreview();
+  updatePreviewStats();
+}
+
+// ============================================================
+// TRADE PREVIEW STATS
+// ============================================================
+function updatePreviewStats() {
+  if (!dualMarket || !dualMarket.current) return;
+
+  var mu = parseFloat(document.getElementById('distMuSlider').value);
+  var sigma = getDistSigma();
+  var amount = parseFloat(document.getElementById('distAmount').value);
+
+  var splitPanel = document.getElementById('distPreviewStats');
+  var combinedPanel = document.getElementById('distPreviewCombined');
+  var isCombined = chartMode === 'combined';
+
+  if (!sigma || sigma <= 0 || !amount || amount <= 0) {
+    if (splitPanel) splitPanel.style.display = 'none';
+    if (combinedPanel) combinedPanel.style.display = 'none';
+    return;
+  }
+
+  var cPreview = computeDistPreview(dualMarket.current, mu, sigma, amount);
+  var iPreview = computeDistPreview(dualMarket.improved, mu, sigma, amount);
+
+  if (!cPreview || !iPreview) {
+    if (splitPanel) splitPanel.style.display = 'none';
+    if (combinedPanel) combinedPanel.style.display = 'none';
+    return;
+  }
+
+  var labels = dualMarket.current.getLabels();
+  var N = dualMarket.current.N;
+  var fee = Math.floor(amount * dualMarket.current.tradeFeeBps / 10000);
+
+  // Current (WTA) stats
+  var cTotal = 0, cMax = 0, cPeakBin = 0;
+  for (var j = 0; j < N; j++) {
+    cTotal += cPreview[j];
+    if (cPreview[j] > cMax) { cMax = cPreview[j]; cPeakBin = j; }
+  }
+  var cMaxPayout = cMax * (1 - dualMarket.current.redemptionFeeBps / 10000);
+
+  // Improved (Kernel) stats — find best winning bin for kernel payout
+  var iTotal = 0, iMaxPayout = 0, iPeakBin = 0;
+  for (var j = 0; j < N; j++) iTotal += iPreview[j];
+  for (var w = 0; w < N; w++) {
+    var kernel = dualMarket.improved.getSettlementKernel(w);
+    var payoutW = 0;
+    for (var jj = 0; jj < N; jj++) payoutW += iPreview[jj] * kernel[jj];
+    if (payoutW > iMaxPayout) { iMaxPayout = payoutW; iPeakBin = w; }
+  }
+  iMaxPayout *= (1 - dualMarket.improved.redemptionFeeBps / 10000);
+
+  if (isCombined) {
+    if (splitPanel) splitPanel.style.display = 'none';
+    if (combinedPanel) {
+      combinedPanel.style.display = '';
+      var table = document.getElementById('distPreviewComparisonTable');
+      if (table) table.innerHTML = buildPreviewComparisonHtml(
+        { total: cTotal, maxPayout: cMaxPayout, peakBin: cPeakBin, fee: fee, cost: amount },
+        { total: iTotal, maxPayout: iMaxPayout, peakBin: iPeakBin, fee: fee, cost: amount },
+        labels
+      );
+    }
+  } else {
+    if (combinedPanel) combinedPanel.style.display = 'none';
+    if (splitPanel) {
+      splitPanel.style.display = '';
+      document.getElementById('distPreviewCurrentGrid').innerHTML = buildPreviewStatsHtml(
+        { total: cTotal, maxPayout: cMaxPayout, peakBin: cPeakBin, fee: fee, cost: amount }, labels
+      );
+      document.getElementById('distPreviewImprovedGrid').innerHTML = buildPreviewStatsHtml(
+        { total: iTotal, maxPayout: iMaxPayout, peakBin: iPeakBin, fee: fee, cost: amount }, labels
+      );
+    }
+  }
+}
+
+function buildPreviewStatsHtml(stats, labels) {
+  var maxProfit = stats.maxPayout - stats.cost;
+  var profitClass = maxProfit >= 0 ? 'positive' : 'negative';
+  return '' +
+    '<div class="result-item"><div class="result-label">Tokens</div><div class="result-value">' + formatCompact(stats.total) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Peak Bin</div><div class="result-value">' + labels[stats.peakBin] + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Max Payout</div><div class="result-value">' + formatCompact(stats.maxPayout) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Cost</div><div class="result-value">' + formatCompact(stats.cost) + '</div></div>' +
+    (stats.fee > 0 ? '<div class="result-item"><div class="result-label">Fee</div><div class="result-value">' + formatCompact(stats.fee) + '</div></div>' : '') +
+    '<div class="result-item"><div class="result-label">Max Profit</div><div class="result-value ' + profitClass + '">' + formatPnl(maxProfit) + '</div></div>';
+}
+
+function buildPreviewComparisonHtml(cStats, iStats, labels) {
+  var cProfit = cStats.maxPayout - cStats.cost;
+  var iProfit = iStats.maxPayout - iStats.cost;
+  var rows = [
+    { label: 'Tokens', c: cStats.total, i: iStats.total },
+    { label: 'Max Payout', c: cStats.maxPayout, i: iStats.maxPayout },
+    { label: 'Cost', c: cStats.cost, i: iStats.cost },
+    { label: 'Max Profit', c: cProfit, i: iProfit },
+  ];
+
+  var html = '<thead><tr>' +
+    '<th>Preview</th>' +
+    '<th style="color:var(--primary-light)">Current (WTA)</th>' +
+    '<th style="color:var(--accent)">Improved (Kernel)</th>' +
+    '<th>Delta</th>' +
+    '</tr></thead><tbody>';
+
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r];
+    var delta = row.i - row.c;
+    var deltaClass = Math.abs(delta) < 0.005 ? '' : (delta >= 0 ? 'positive' : 'negative');
+    html += '<tr>' +
+      '<td style="font-weight:600;color:var(--text-heading);text-align:left;">' + row.label + '</td>' +
+      '<td class="col-current">' + formatCompact(row.c) + '</td>' +
+      '<td class="col-improved">' + formatCompact(row.i) + '</td>' +
+      '<td class="col-delta ' + deltaClass + '">' + (delta >= 0 ? '+' : '') + formatCompact(delta) + '</td>' +
+      '</tr>';
+  }
+
+  html += '<tr><td style="font-weight:600;color:var(--text-heading);text-align:left;">Peak Bin</td>' +
+    '<td class="col-current">' + labels[cStats.peakBin] + '</td>' +
+    '<td class="col-improved">' + labels[iStats.peakBin] + '</td>' +
+    '<td>\u2014</td></tr>';
+
+  if (cStats.fee > 0) {
+    html += '<tr><td style="font-weight:600;color:var(--text-heading);text-align:left;">Fee</td>' +
+      '<td class="col-current">' + formatCompact(cStats.fee) + '</td>' +
+      '<td class="col-improved">' + formatCompact(iStats.fee) + '</td>' +
+      '<td>\u2014</td></tr>';
+  }
+
+  html += '</tbody>';
+  return html;
 }
 
 function executeDistTrade(side) {
@@ -1691,6 +2015,7 @@ function applyResolutionMarkers() {
 // ============================================================
 (function () {
   loadSettings();
+  loadTraderRegistry();
   applyHtmlClass();
   applyFontSize(settings.fontSize);
   document.getElementById('themeIcon').textContent = currentTheme === 'dark' ? '\u263E' : '\u2600';
@@ -1706,6 +2031,10 @@ function applyResolutionMarkers() {
       if (label) label.textContent = autoFitY ? 'Auto' : 'Manual';
     }
   } catch (e) { /* ignore */ }
+
+  // Render persisted traders
+  renderTraderList();
+  updateTraderSelectors();
 })();
 </script>
 </body>
