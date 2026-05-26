@@ -95,24 +95,15 @@ Show the key differing formulas at the top of each market column:
 
 ---
 
-### Phase 3: Trader Tab (Discrete Trading)
+### ~~Phase 3: Trader Tab (Discrete Trading)~~ — Removed
 
-> **Goal:** Discrete bin buy/sell with live dual charts and side-by-side comparison.
-
-- [x] **P3-1:** Shared trade controls (bin slider, amount, buy/sell buttons)
-- [x] **P3-2:** Dual charts rendering (Chart.js smooth lines, probability + position datasets)
-- [x] **P3-3:** Dual stats panels (k, invariant, wallet, expected/peak payout, PnL)
-- [x] **P3-4:** Trade execution flow (preview -> execute -> update both)
-- [x] **P3-5:** Chart dataset toggling (show/hide probability, position)
-
-> **Critical insight:** Both engines use the same L2 AMM for trading —
-> `discreteBuy()` and `discreteSell()` produce identical `tokensOut` and
-> `collateralOut`. They diverge only in: (a) displayed probabilities,
-> (b) expected/peak payout calculations, (c) resolution payouts.
+> Merged into Distribution/Trading tab. Discrete single-bin trading was redundant
+> since distribution trading is strictly more flexible, and trader management
+> lives in the Setup tab.
 
 ---
 
-### Phase 4: Distribution Tab
+### Phase 4: Trading Tab (Distribution Trading)
 
 > **Goal:** Distribution (mu/sigma) trading with the same dual-chart comparison.
 
@@ -151,9 +142,9 @@ Show the key differing formulas at the top of each market column:
 
 > **Goal:** Allow users to drag on chart axes to zoom/pan.
 
-- [ ] **P7-1:** Y-axis drag to zoom
-- [ ] **P7-2:** X-axis drag to pan/zoom (scroll wheel, synced between split charts)
-- [ ] **P7-3:** Implementation approach (chartjs-plugin-zoom or custom handlers)
+- [x] **P7-1:** Y-axis drag to zoom
+- [x] **P7-2:** X-axis drag to pan/zoom (scroll wheel, box-zoom drag, shift+drag pan)
+- [x] **P7-3:** Implementation: chartjs-plugin-zoom + Hammer.js, reset zoom buttons per chart
 
 ---
 
@@ -221,11 +212,11 @@ Source code to port/adapt from:
 | P0 | Done | Dual engine core | — |
 | P1 | Done | HTML layout & tabs | — |
 | P2 | Done | Setup tab | P0, P1 |
-| P3 | Done | Trader tab | P0, P1, P2 |
-| P4 | Done | Distribution tab | P0, P1, P2 |
+| P3 | Removed | ~~Trader tab~~ (merged into Trading) | — |
+| P4 | Done | Trading tab | P0, P1, P2 |
 | P5 | Done | Resolve tab | P0, P1, P2 |
 | P6 | Done | Combined chart mode | P3 or P4 |
-| P7 | | Axis drag interactivity | P3 or P4 |
+| P7 | Done | Chart zoom/pan interactivity | P4 |
 | P8 | | Settings & polish | All above |
 
 **P0 and P1 can be developed in parallel** (engine vs layout).

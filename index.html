@@ -8,8 +8,10 @@
 <!-- Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-<!-- Chart.js -->
+<!-- Chart.js + Zoom plugin (requires Hammer.js for touch/drag) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2"></script>
 
 <style>
 /* ============================================================
@@ -515,6 +517,23 @@ select.control-input { cursor: pointer; }
   height: 14px;
 }
 
+.btn-reset-zoom {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+.btn-reset-zoom:hover {
+  color: var(--text-heading);
+  border-color: var(--primary);
+  background: var(--bg-tertiary);
+}
+
 .chart-container {
   position: relative;
   height: 320px;
@@ -897,8 +916,7 @@ select.control-input { cursor: pointer; }
   <!-- Tab bar -->
   <div class="tabs" id="mainTabs">
     <button class="tab active" onclick="switchMainTab('setup', this)">Setup</button>
-    <button class="tab" onclick="switchMainTab('trader', this)" id="tabTrader" disabled>Trader</button>
-    <button class="tab" onclick="switchMainTab('distribution', this)" id="tabDistribution" disabled>Distribution</button>
+    <button class="tab" onclick="switchMainTab('distribution', this)" id="tabDistribution" disabled>Trading</button>
     <button class="tab" onclick="switchMainTab('resolve', this)" id="tabResolve" disabled>Resolve</button>
   </div>
 
@@ -1000,102 +1018,8 @@ select.control-input { cursor: pointer; }
   <!-- ============================================================
        TRADER TAB (Discrete Trading)
        ============================================================ -->
-  <div class="tab-content" id="tab-trader">
-    <!-- Toolbar -->
-    <div class="playground-toolbar">
-      <div class="toolbar-group">
-        <span class="toolbar-label">Active Trader</span>
-        <select class="toolbar-select" id="traderSelect"></select>
-      </div>
-      <div class="toolbar-group">
-        <span class="toolbar-label">Chart</span>
-        <div class="chart-mode-group">
-          <button class="chart-mode-btn active" onclick="setChartMode('split', this)">Split</button>
-          <button class="chart-mode-btn" onclick="setChartMode('combined', this)">Combined</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Trade controls -->
-    <div class="demo-controls" id="traderControls">
-      <div class="control-group">
-        <label class="control-label">Bin <span id="traderBinLabel"></span></label>
-        <input type="range" class="control-input" id="traderBinSlider" min="0" max="31" value="16">
-        <input type="number" class="control-input" id="traderBinInput" min="0" max="31" value="16" style="margin-top:4px">
-      </div>
-      <div class="control-group">
-        <label class="control-label">Amount</label>
-        <input type="number" class="control-input" id="traderAmount" value="5000" min="1">
-      </div>
-      <div class="control-group" style="justify-content:flex-end;">
-        <label class="control-label">&nbsp;</label>
-        <div class="btn-group">
-          <button class="btn btn-success" onclick="executeTrade('buy')">Buy</button>
-          <button class="btn btn-danger" onclick="executeTrade('sell')">Sell</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Dual charts -->
-    <div class="dual-charts" id="traderCharts">
-      <div class="chart-panel panel-current" id="traderChartPanelCurrent">
-        <div class="chart-panel-header">
-          <span class="chart-panel-title">Current (Quadratic WTA)</span>
-          <div class="chart-toggles">
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('traderCurrentChart','prob',this.checked)"> Probability</label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('traderCurrentChart','pos',this.checked)"> Position</label>
-          </div>
-        </div>
-        <div class="chart-container"><canvas id="traderCurrentChart"></canvas></div>
-      </div>
-      <div class="chart-panel panel-improved" id="traderChartPanelImproved">
-        <div class="chart-panel-header">
-          <span class="chart-panel-title">Improved (Linear Kernel)</span>
-          <div class="chart-toggles">
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('traderImprovedChart','prob',this.checked)"> Probability</label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('traderImprovedChart','pos',this.checked)"> Position</label>
-          </div>
-        </div>
-        <div class="chart-container"><canvas id="traderImprovedChart"></canvas></div>
-      </div>
-      <!-- Combined chart (hidden by default) -->
-      <div class="chart-panel panel-combined" id="traderChartPanelCombined" style="display:none;">
-        <div class="chart-panel-header">
-          <span class="chart-panel-title">Combined Comparison</span>
-          <div class="chart-toggles">
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('traderCombinedChart','cProb',this.checked)"> <span style="color:var(--primary-light)">Current P</span></label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('traderCombinedChart','iProb',this.checked)"> <span style="color:var(--accent)">Improved P</span></label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('traderCombinedChart','pos',this.checked)"> Holdings</label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('traderCombinedChart','uniform',this.checked)"> Uniform</label>
-          </div>
-        </div>
-        <div class="chart-container"><canvas id="traderCombinedChart"></canvas></div>
-      </div>
-    </div>
-
-    <!-- Dual stats -->
-    <div class="dual-stats" id="traderStats">
-      <div class="stats-panel">
-        <div class="result-grid" id="traderStatsCurrentGrid">
-          <!-- filled by JS -->
-        </div>
-      </div>
-      <div class="stats-panel">
-        <div class="result-grid" id="traderStatsImprovedGrid">
-          <!-- filled by JS -->
-        </div>
-      </div>
-    </div>
-    <!-- Combined stats (hidden by default) -->
-    <div class="stats-panel" id="traderStatsCombined" style="display:none;">
-      <table class="comparison-table" id="traderComparisonTable">
-        <!-- filled by JS -->
-      </table>
-    </div>
-  </div>
-
   <!-- ============================================================
-       DISTRIBUTION TAB
+       TRADING TAB
        ============================================================ -->
   <div class="tab-content" id="tab-distribution">
     <div class="playground-toolbar">
@@ -1137,6 +1061,11 @@ select.control-input { cursor: pointer; }
       </div>
     </div>
 
+    <!-- Zoom hint -->
+    <div style="text-align:right;font-size:0.65rem;color:var(--text-muted);margin-bottom:4px;padding-right:4px;">
+      Scroll to zoom &middot; Drag to box-zoom &middot; Shift+drag to pan
+    </div>
+
     <!-- Dual charts -->
     <div class="dual-charts" id="distCharts">
       <div class="chart-panel panel-current" id="distChartPanelCurrent">
@@ -1146,6 +1075,7 @@ select.control-input { cursor: pointer; }
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','prob',this.checked)"> Probability</label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','pos',this.checked)"> Position</label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','preview',this.checked)"> Preview</label>
+            <button class="btn-reset-zoom" onclick="resetZoom('distCurrentChart')" title="Reset zoom">&#x21BA;</button>
           </div>
         </div>
         <div class="chart-container"><canvas id="distCurrentChart"></canvas></div>
@@ -1157,6 +1087,7 @@ select.control-input { cursor: pointer; }
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','prob',this.checked)"> Probability</label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','pos',this.checked)"> Position</label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','preview',this.checked)"> Preview</label>
+            <button class="btn-reset-zoom" onclick="resetZoom('distImprovedChart')" title="Reset zoom">&#x21BA;</button>
           </div>
         </div>
         <div class="chart-container"><canvas id="distImprovedChart"></canvas></div>
@@ -1171,6 +1102,7 @@ select.control-input { cursor: pointer; }
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cPreview',this.checked)"> <span style="color:var(--primary-light)">C Preview</span></label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','iPreview',this.checked)"> <span style="color:var(--accent)">I Preview</span></label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','uniform',this.checked)"> Uniform</label>
+            <button class="btn-reset-zoom" onclick="resetZoom('distCombinedChart')" title="Reset zoom">&#x21BA;</button>
           </div>
         </div>
         <div class="chart-container"><canvas id="distCombinedChart"></canvas></div>
@@ -1344,7 +1276,6 @@ function switchMainTab(tabId, btn) {
 }
 
 function enableTradingTabs() {
-  document.getElementById('tabTrader').disabled = false;
   document.getElementById('tabDistribution').disabled = false;
   document.getElementById('tabResolve').disabled = false;
 }
@@ -1375,22 +1306,7 @@ function setChartMode(mode, btn) {
 function applyChartMode() {
   var isCombined = chartMode === 'combined';
 
-  // Trader tab
-  var tc = document.getElementById('traderChartPanelCurrent');
-  var ti = document.getElementById('traderChartPanelImproved');
-  var tx = document.getElementById('traderChartPanelCombined');
-  if (tc) tc.style.display = isCombined ? 'none' : '';
-  if (ti) ti.style.display = isCombined ? 'none' : '';
-  if (tx) tx.style.display = isCombined ? '' : 'none';
-  var tCharts = document.getElementById('traderCharts');
-  if (tCharts) tCharts.classList.toggle('combined-mode', isCombined);
-
-  var tStats = document.getElementById('traderStats');
-  var tStatsCombined = document.getElementById('traderStatsCombined');
-  if (tStats) tStats.style.display = isCombined ? 'none' : '';
-  if (tStatsCombined) tStatsCombined.style.display = isCombined ? '' : 'none';
-
-  // Distribution tab
+  // Trading tab
   var dc = document.getElementById('distChartPanelCurrent');
   var di = document.getElementById('distChartPanelImproved');
   var dx = document.getElementById('distChartPanelCombined');
@@ -1407,11 +1323,8 @@ function applyChartMode() {
 
   // Refresh combined content when switching to combined mode
   if (isCombined && dualMarket && dualMarket.initialized) {
-    refreshCombinedTraderChart();
     refreshCombinedDistChart();
     updateCombinedDistPreview();
-    var traderName = document.getElementById('traderSelect').value;
-    refreshCombinedTraderStats(traderName);
     var distTraderName = document.getElementById('distTraderSelect').value;
     refreshCombinedDistStats(distTraderName);
   }
@@ -1424,6 +1337,33 @@ function applyChartMode() {
 // ============================================================
 var charts = {};  // { chartId: Chart instance }
 
+// Shared zoom/pan plugin config for all charts
+function getZoomPluginConfig() {
+  return {
+    zoom: {
+      wheel: { enabled: true, modifierKey: null },
+      drag: { enabled: true, backgroundColor: 'rgba(99,102,241,0.15)', borderColor: 'rgba(99,102,241,0.5)', borderWidth: 1 },
+      pinch: { enabled: true },
+      mode: 'xy',
+    },
+    pan: {
+      enabled: true,
+      mode: 'xy',
+      modifierKey: 'shift',
+    },
+    limits: {
+      yProb: { min: 0 },
+      yPos: { min: 0 },
+      y: { min: 0 },
+    },
+  };
+}
+
+function resetZoom(chartId) {
+  var chart = charts[chartId];
+  if (chart) chart.resetZoom();
+}
+
 function getOrCreateChart(canvasId, config) {
   if (charts[canvasId]) {
     charts[canvasId].destroy();
@@ -1434,281 +1374,11 @@ function getOrCreateChart(canvasId, config) {
   return charts[canvasId];
 }
 
-function buildChartConfig(labels, probData, posData, colorScheme) {
-  var colors = getChartColors();
-  var probColor = colorScheme === 'improved' ? colors.accent : colors.primary;
-  var posColor = colors.warning;
-  return {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: 'Probability',
-          data: probData,
-          type: 'line',
-          borderColor: probColor,
-          backgroundColor: probColor + '22',
-          borderWidth: 2,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          fill: true,
-          tension: 0.3,
-          yAxisID: 'yProb',
-          order: 1,
-          _datasetKey: 'prob',
-        },
-        {
-          label: 'Holdings',
-          data: posData,
-          backgroundColor: posColor + '55',
-          borderColor: posColor,
-          borderWidth: 1,
-          yAxisID: 'yPos',
-          order: 2,
-          _datasetKey: 'pos',
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function (ctx) {
-              if (ctx.dataset._datasetKey === 'prob') return 'P: ' + (ctx.raw * 100).toFixed(2) + '%';
-              return 'Holdings: ' + formatCompact(ctx.raw);
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          ticks: { color: colors.textMuted, font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 20 },
-          grid: { color: colors.border + '33' },
-        },
-        yProb: {
-          type: 'linear', position: 'left',
-          title: { display: true, text: 'Probability', color: colors.textMuted, font: { size: 10 } },
-          ticks: { color: colors.textMuted, font: { size: 9 }, callback: function (v) { return (v * 100).toFixed(1) + '%'; } },
-          grid: { color: colors.border + '33' },
-          min: 0,
-        },
-        yPos: {
-          type: 'linear', position: 'right',
-          title: { display: true, text: 'Holdings', color: colors.textMuted, font: { size: 10 } },
-          ticks: { color: colors.textMuted, font: { size: 9 } },
-          grid: { drawOnChartArea: false },
-          min: 0,
-        },
-      },
-    },
-  };
-}
-
-function initTraderCharts() {
-  if (!dualMarket || !dualMarket.current) return;
-  var labels = dualMarket.current.getLabels();
-  var cProbs = dualMarket.current.getProbabilities();
-  var iProbs = dualMarket.improved.getProbabilities();
-  var emptyHoldings = [];
-  for (var j = 0; j < dualMarket.current.N; j++) emptyHoldings.push(0);
-
-  getOrCreateChart('traderCurrentChart', buildChartConfig(labels, cProbs, emptyHoldings, 'current'));
-  getOrCreateChart('traderImprovedChart', buildChartConfig(labels, iProbs, emptyHoldings, 'improved'));
-}
-
-function refreshTraderCharts() {
-  if (!dualMarket || !dualMarket.current) return;
-
-  var traderName = document.getElementById('traderSelect').value;
-  var cProbs = dualMarket.current.getProbabilities();
-  var iProbs = dualMarket.improved.getProbabilities();
-
-  // Get holdings for the active trader
-  var cHoldings = [], iHoldings = [];
-  for (var j = 0; j < dualMarket.current.N; j++) {
-    cHoldings.push(0);
-    iHoldings.push(0);
-  }
-  if (traderName) {
-    var cTh = dualMarket.current.traderHoldings[traderName];
-    var iTh = dualMarket.improved.traderHoldings[traderName];
-    if (cTh) cHoldings = cTh.holdings.slice();
-    if (iTh) iHoldings = iTh.holdings.slice();
-  }
-
-  // Update split charts
-  var cc = charts['traderCurrentChart'];
-  if (cc) {
-    cc.data.datasets[0].data = cProbs;
-    cc.data.datasets[1].data = cHoldings;
-    cc.update('none');
-  }
-  var ic = charts['traderImprovedChart'];
-  if (ic) {
-    ic.data.datasets[0].data = iProbs;
-    ic.data.datasets[1].data = iHoldings;
-    ic.update('none');
-  }
-
-  refreshTraderStats(traderName);
-  refreshCombinedTraderChart();
-  refreshCombinedTraderStats(traderName);
-}
-
-function refreshTraderStats(traderName) {
-  if (!dualMarket || !dualMarket.current) return;
-
-  var cGrid = document.getElementById('traderStatsCurrentGrid');
-  var iGrid = document.getElementById('traderStatsImprovedGrid');
-
-  if (!traderName) {
-    var emptyHtml = '<div class="result-item"><div class="result-label">Select a trader</div><div class="result-value">—</div></div>';
-    if (cGrid) cGrid.innerHTML = emptyHtml;
-    if (iGrid) iGrid.innerHTML = emptyHtml;
-    return;
-  }
-
-  var portfolios = dualMarket.getPortfolios(traderName);
-  if (!portfolios) return;
-
-  var cp = portfolios.current;
-  var ip = portfolios.improved;
-
-  function statsHtml(p, engine) {
-    var k = engine === 'current' ? dualMarket.current.k : dualMarket.improved.k;
-    var pnlClass = p.unrealizedPnL >= 0 ? 'positive' : 'negative';
-    return '' +
-      '<div class="result-item"><div class="result-label">Vault (k)</div><div class="result-value">' + formatCompact(k) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Wallet</div><div class="result-value">' + formatCompact(p.wallet) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Holdings</div><div class="result-value">' + formatCompact(p.totalHoldings) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">E[Payout]</div><div class="result-value">' + formatCompact(p.expectedPayout) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Peak Payout</div><div class="result-value">' + formatCompact(p.peakPayout) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Spent</div><div class="result-value">' + formatCompact(p.totalSpent) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Received</div><div class="result-value">' + formatCompact(p.totalReceived) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Unreal. PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(p.unrealizedPnL) + '</div></div>';
-  }
-
-  if (cGrid) cGrid.innerHTML = statsHtml(cp, 'current');
-  if (iGrid) iGrid.innerHTML = statsHtml(ip, 'improved');
-}
-
 // ============================================================
 // PHASE 6: COMBINED CHART MODE
 // ============================================================
 
 // --- P6-1: Combined chart config builders ---
-function buildCombinedTraderChartConfig(labels, cProbs, iProbs, holdings, uniformProb) {
-  var colors = getChartColors();
-  var uniformData = [];
-  for (var j = 0; j < labels.length; j++) uniformData.push(uniformProb);
-  return {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: 'Current Probability',
-          data: cProbs,
-          type: 'line',
-          borderColor: colors.primary,
-          backgroundColor: colors.primary + '18',
-          borderWidth: 2.5,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          fill: false,
-          tension: 0.3,
-          yAxisID: 'yProb',
-          order: 1,
-          _datasetKey: 'cProb',
-        },
-        {
-          label: 'Improved Probability',
-          data: iProbs,
-          type: 'line',
-          borderColor: colors.accent,
-          backgroundColor: colors.accent + '18',
-          borderWidth: 2.5,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          fill: false,
-          tension: 0.3,
-          yAxisID: 'yProb',
-          order: 1,
-          _datasetKey: 'iProb',
-        },
-        {
-          label: 'Holdings',
-          data: holdings,
-          backgroundColor: colors.warning + '55',
-          borderColor: colors.warning,
-          borderWidth: 1,
-          yAxisID: 'yPos',
-          order: 3,
-          _datasetKey: 'pos',
-        },
-        {
-          label: 'Uniform',
-          data: uniformData,
-          type: 'line',
-          borderColor: colors.textMuted,
-          borderWidth: 1,
-          borderDash: [4, 4],
-          pointRadius: 0,
-          fill: false,
-          tension: 0,
-          yAxisID: 'yProb',
-          order: 0,
-          _datasetKey: 'uniform',
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function (ctx) {
-              if (ctx.dataset._datasetKey === 'cProb') return 'Current P: ' + (ctx.raw * 100).toFixed(2) + '%';
-              if (ctx.dataset._datasetKey === 'iProb') return 'Improved P: ' + (ctx.raw * 100).toFixed(2) + '%';
-              if (ctx.dataset._datasetKey === 'uniform') return 'Uniform: ' + (ctx.raw * 100).toFixed(2) + '%';
-              return 'Holdings: ' + formatCompact(ctx.raw);
-            },
-          },
-        },
-        divergenceAnnotation: true,
-      },
-      scales: {
-        x: {
-          ticks: { color: colors.textMuted, font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 20 },
-          grid: { color: colors.border + '33' },
-        },
-        yProb: {
-          type: 'linear', position: 'left',
-          title: { display: true, text: 'Probability', color: colors.textMuted, font: { size: 10 } },
-          ticks: { color: colors.textMuted, font: { size: 9 }, callback: function (v) { return (v * 100).toFixed(1) + '%'; } },
-          grid: { color: colors.border + '33' },
-          min: 0,
-        },
-        yPos: {
-          type: 'linear', position: 'right',
-          title: { display: true, text: 'Holdings', color: colors.textMuted, font: { size: 10 } },
-          ticks: { color: colors.textMuted, font: { size: 9 } },
-          grid: { drawOnChartArea: false },
-          min: 0,
-        },
-      },
-    },
-  };
-}
-
 function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview, iPreview, uniformProb) {
   var colors = getChartColors();
   var uniformData = [];
@@ -1823,6 +1493,7 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
           },
         },
         divergenceAnnotation: true,
+        zoom: getZoomPluginConfig(),
       },
       scales: {
         x: {
@@ -1849,17 +1520,6 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
 }
 
 // --- P6-1: Init combined charts ---
-function initCombinedTraderChart() {
-  if (!dualMarket || !dualMarket.current) return;
-  var labels = dualMarket.current.getLabels();
-  var cProbs = dualMarket.current.getProbabilities();
-  var iProbs = dualMarket.improved.getProbabilities();
-  var empty = [];
-  for (var j = 0; j < dualMarket.current.N; j++) empty.push(0);
-  var uniformProb = 1 / dualMarket.current.N;
-  getOrCreateChart('traderCombinedChart', buildCombinedTraderChartConfig(labels, cProbs, iProbs, empty, uniformProb));
-}
-
 function initCombinedDistChart() {
   if (!dualMarket || !dualMarket.current) return;
   var labels = dualMarket.current.getLabels();
@@ -1872,30 +1532,6 @@ function initCombinedDistChart() {
 }
 
 // --- P6-1: Refresh combined charts ---
-function refreshCombinedTraderChart() {
-  if (!dualMarket || !dualMarket.current) return;
-  var chart = charts['traderCombinedChart'];
-  if (!chart) return;
-
-  var cProbs = dualMarket.current.getProbabilities();
-  var iProbs = dualMarket.improved.getProbabilities();
-
-  var traderName = document.getElementById('traderSelect').value;
-  var holdings = [];
-  for (var j = 0; j < dualMarket.current.N; j++) holdings.push(0);
-  if (traderName) {
-    var cTh = dualMarket.current.traderHoldings[traderName];
-    if (cTh) holdings = cTh.holdings.slice();
-  }
-
-  // datasets: [cProb, iProb, holdings, uniform]
-  chart.data.datasets[0].data = cProbs;
-  chart.data.datasets[1].data = iProbs;
-  chart.data.datasets[2].data = holdings;
-  // uniform stays constant
-  chart.update('none');
-}
-
 function refreshCombinedDistChart() {
   if (!dualMarket || !dualMarket.current) return;
   var chart = charts['distCombinedChart'];
@@ -1997,24 +1633,6 @@ Chart.register({
 });
 
 // --- P6-3: Combined stats (comparison table with delta column) ---
-function refreshCombinedTraderStats(traderName) {
-  if (!dualMarket || !dualMarket.current) return;
-  var table = document.getElementById('traderComparisonTable');
-  if (!table) return;
-
-  if (!traderName) {
-    table.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">Select a trader to see comparison</td></tr>';
-    return;
-  }
-
-  var portfolios = dualMarket.getPortfolios(traderName);
-  if (!portfolios) return;
-  var cp = portfolios.current;
-  var ip = portfolios.improved;
-
-  table.innerHTML = buildComparisonTableHtml(cp, ip);
-}
-
 function refreshCombinedDistStats(traderName) {
   if (!dualMarket || !dualMarket.current) return;
   var table = document.getElementById('distComparisonTable');
@@ -2186,15 +1804,7 @@ function createMarket() {
 
   marketCreated = true;
 
-  // Update trader tab controls
-  var maxBin = N - 1;
-  document.getElementById('traderBinSlider').max = maxBin;
-  document.getElementById('traderBinSlider').value = Math.floor(maxBin / 2);
-  document.getElementById('traderBinInput').max = maxBin;
-  document.getElementById('traderBinInput').value = Math.floor(maxBin / 2);
-  updateBinLabel();
-
-  // Update distribution tab controls
+  // Update trading tab controls
   document.getElementById('distMuSlider').min = rangeMin;
   document.getElementById('distMuSlider').max = rangeMax;
   document.getElementById('distMuSlider').value = (rangeMin + rangeMax) / 2;
@@ -2224,9 +1834,7 @@ function createMarket() {
   enableTradingTabs();
 
   // Initialize charts
-  initTraderCharts();
   initDistCharts();
-  initCombinedTraderChart();
   initCombinedDistChart();
 
   // Reset trader list and selectors (in case market was re-created)
@@ -2267,7 +1875,6 @@ function topUpTrader(name) {
   t.currentWallet += amount;
   t.improvedWallet += amount;
   renderTraderList();
-  refreshTraderCharts();
   refreshDistCharts();
   showToast('Topped up ' + name + ' by $' + formatCompact(amount), 'info');
 }
@@ -2296,7 +1903,6 @@ function renderTraderList() {
 function updateTraderSelectors() {
   var names = dualMarket ? Object.keys(dualMarket.traders) : [];
   var selectors = [
-    document.getElementById('traderSelect'),
     document.getElementById('distTraderSelect'),
   ];
   for (var s = 0; s < selectors.length; s++) {
@@ -2317,14 +1923,6 @@ function updateTraderSelectors() {
 // ============================================================
 // INPUT SYNC HELPERS
 // ============================================================
-function updateBinLabel() {
-  if (!dualMarket || !dualMarket.current) return;
-  var bin = parseInt(document.getElementById('traderBinSlider').value, 10);
-  var labels = dualMarket.current.getLabels();
-  var el = document.getElementById('traderBinLabel');
-  if (el && labels[bin]) el.textContent = '(' + labels[bin] + ')';
-}
-
 function getDistSigma() {
   if (!dualMarket || !dualMarket.current) return null;
   var range = dualMarket.current.rangeMax - dualMarket.current.rangeMin;
@@ -2345,18 +1943,6 @@ function updateDistLabels() {
   document.getElementById('distSigmaDisplay').textContent = '\u03C3 = ' + (sigma !== null ? sigma.toFixed(2) : '—');
   document.getElementById('distSigmaLabel').textContent = '(' + conf + '%)';
 }
-
-// Bin slider <-> input sync
-document.getElementById('traderBinSlider').addEventListener('input', function () {
-  document.getElementById('traderBinInput').value = this.value;
-  updateBinLabel();
-});
-document.getElementById('traderBinInput').addEventListener('input', function () {
-  var v = Math.max(0, Math.min(parseInt(this.max, 10), parseInt(this.value, 10) || 0));
-  document.getElementById('traderBinSlider').value = v;
-  this.value = v;
-  updateBinLabel();
-});
 
 // Mu slider <-> input sync
 document.getElementById('distMuSlider').addEventListener('input', function () {
@@ -2394,46 +1980,6 @@ document.getElementById('resolveSlider').addEventListener('input', function () {
 });
 document.getElementById('resolveInput').addEventListener('input', function () {
   document.getElementById('resolveSlider').value = this.value;
-});
-
-// ============================================================
-// PHASE 3: DISCRETE TRADING
-// ============================================================
-function executeTrade(side) {
-  if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first', 'error');
-  var traderName = document.getElementById('traderSelect').value;
-  if (!traderName) return showToast('Select a trader first', 'error');
-  var binIdx = parseInt(document.getElementById('traderBinSlider').value, 10);
-  var amount = parseFloat(document.getElementById('traderAmount').value);
-  if (isNaN(amount) || amount <= 0) return showToast('Amount must be > 0', 'error');
-
-  var result;
-  if (side === 'buy') {
-    result = dualMarket.discreteBuy(traderName, binIdx, amount);
-  } else {
-    result = dualMarket.discreteSell(traderName, binIdx, amount);
-  }
-
-  if (result.error) return showToast(result.error, 'error');
-  if (result.current && result.current.error) return showToast('Current: ' + result.current.error, 'error');
-  if (result.improved && result.improved.error) showToast('Improved: ' + result.improved.error, 'error');
-
-  // Show toast
-  var label = dualMarket.current.getLabels()[binIdx] || binIdx;
-  if (side === 'buy') {
-    showToast(traderName + ' bought bin ' + label + ': ' + formatCompact(result.current.tokensOut) + ' tokens for $' + formatCompact(amount), 'buy');
-  } else {
-    showToast(traderName + ' sold ' + formatCompact(amount) + ' tokens from bin ' + label + ': $' + formatCompact(result.current.collateralOut), 'sell');
-  }
-
-  refreshTraderCharts();
-  refreshDistCharts();
-  renderTraderList();
-}
-
-// Active trader change -> refresh charts
-document.getElementById('traderSelect').addEventListener('change', function () {
-  refreshTraderCharts();
 });
 
 // ============================================================
@@ -2505,6 +2051,7 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
             },
           },
         },
+        zoom: getZoomPluginConfig(),
       },
       scales: {
         x: {
@@ -2704,7 +2251,6 @@ function executeDistTrade(side) {
   }
 
   refreshDistCharts();
-  refreshTraderCharts();
   renderTraderList();
 }
 
@@ -2904,7 +2450,7 @@ function renderKernelChart(winBin) {
 function applyResolutionMarkers() {
   if (!dualMarket || !dualMarket.current || !dualMarket.current.resolved) return;
   var winBin = dualMarket.current.winningBin;
-  var chartIds = ['traderCurrentChart', 'traderImprovedChart', 'distCurrentChart', 'distImprovedChart', 'traderCombinedChart', 'distCombinedChart'];
+  var chartIds = ['distCurrentChart', 'distImprovedChart', 'distCombinedChart'];
   for (var c = 0; c < chartIds.length; c++) {
     var chart = charts[chartIds[c]];
     if (chart) {

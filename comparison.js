@@ -108,18 +108,12 @@ function showToast(message, type) {
 
 function updateAllCharts() {
   if (dualMarket && dualMarket.initialized) {
-    if (typeof initTraderCharts === 'function') {
-      initTraderCharts();
-      if (typeof refreshTraderCharts === 'function') refreshTraderCharts();
-    }
     if (typeof initDistCharts === 'function') {
       initDistCharts();
       if (typeof refreshDistCharts === 'function') refreshDistCharts();
     }
     // Combined charts
-    if (typeof initCombinedTraderChart === 'function') initCombinedTraderChart();
     if (typeof initCombinedDistChart === 'function') initCombinedDistChart();
-    if (typeof refreshCombinedTraderChart === 'function') refreshCombinedTraderChart();
     if (typeof refreshCombinedDistChart === 'function') refreshCombinedDistChart();
     // Re-apply dataset visibility from checkbox states after chart recreation
     if (typeof reapplyDatasetToggles === 'function') reapplyDatasetToggles();
