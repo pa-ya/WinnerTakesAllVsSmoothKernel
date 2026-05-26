@@ -215,7 +215,7 @@
 
     <!-- Interaction hints -->
     <div style="text-align:right;font-size:0.65rem;color:var(--text-muted);margin-bottom:4px;padding-right:4px;">
-      Click chart: set &mu; &middot; Shift+drag: set &mu; &amp; &sigma; &middot; Scroll: zoom &middot; Drag: pan
+      Drag &#x2194;: set &mu; &middot; Drag &#x2195;: set confidence &middot; Click: set &mu; &middot; Ctrl+drag: pan &middot; Scroll: zoom
     </div>
 
     <!-- Dual charts -->
@@ -595,6 +595,7 @@ function getZoomPluginConfig() {
     pan: {
       enabled: true,
       mode: 'xy',
+      modifierKey: 'ctrl',
       overScaleMode: 'xy',
       onPan: function (ctx) { syncLinkedYAxes(ctx.chart); },
     },
@@ -966,12 +967,14 @@ Chart.register({
 });
 
 // ============================================================
-// CHART CLICK-DRAG INTERACTION: Set mu/sigma from chart
+// CHART DRAG INTERACTION: Set mu/sigma by dragging on chart
 // ============================================================
+// Drag horizontally: changes mu (center)
+// Drag vertically: changes confidence (up = higher confidence)
 // Click: sets mu to clicked x-value
-// Shift+drag: sets mu to midpoint, sigma from drag range width
-// (Shift key prevents conflict with zoom plugin's pan)
-var _chartDrag = { active: false, startX: null, startLabel: null, chartId: null };
+// Ctrl+drag: pan (handled by zoom plugin with modifierKey: 'ctrl')
+// Scroll: zoom (unchanged)
+var _chartDrag = { active: false, startX: null, startY: null, chartId: null, moved: false };
 
 function getXValueFromPixel(chart, pixelX) {
   var xScale = chart.scales.x;
@@ -983,6 +986,16 @@ function getXValueFromPixel(chart, pixelX) {
   return dualMarket.current.centers[binIdx];
 }
 
+function getConfFromPixelY(chart, pixelY) {
+  // Top of chart area = high confidence (100), bottom = low confidence (0)
+  var area = chart.chartArea;
+  if (!area) return null;
+  var ratio = (pixelY - area.top) / (area.bottom - area.top);
+  ratio = Math.max(0, Math.min(1, ratio));
+  // Invert: top=100, bottom=0
+  return Math.round((1 - ratio) * 100);
+}
+
 function isInChartArea(chart, x, y) {
   var area = chart.chartArea;
   return area && x >= area.left && x <= area.right && y >= area.top && y <= area.bottom;
@@ -990,66 +1003,66 @@ function isInChartArea(chart, x, y) {
 
 function chartInteractionMouseDown(e, chart) {
   if (!dualMarket || !dualMarket.initialized) return;
+  if (e.ctrlKey || e.metaKey) return; // let zoom plugin handle Ctrl+drag for pan
   var rect = chart.canvas.getBoundingClientRect();
   var x = e.clientX - rect.left;
   var y = e.clientY - rect.top;
   if (!isInChartArea(chart, x, y)) return;
 
-  if (e.shiftKey) {
-    // Shift+drag to set mu+sigma — disable pan temporarily
-    _chartDrag.active = true;
-    _chartDrag.startX = x;
-    _chartDrag.startLabel = getXValueFromPixel(chart, x);
-    _chartDrag.chartId = chart.canvas.id;
-    // Disable zoom plugin pan while shift-dragging
-    if (chart.options.plugins.zoom && chart.options.plugins.zoom.pan) {
-      chart.options.plugins.zoom.pan.enabled = false;
-      chart.update('none');
-    }
-    e.preventDefault();
-  }
-  // If not shift, let zoom plugin handle the drag for pan
+  _chartDrag.active = true;
+  _chartDrag.startX = x;
+  _chartDrag.startY = y;
+  _chartDrag.chartId = chart.canvas.id;
+  _chartDrag.moved = false;
+  chart.canvas.style.cursor = 'grabbing';
+  e.preventDefault();
 }
 
 function chartInteractionMouseMove(e, chart) {
-  if (!_chartDrag.active || chart.canvas.id !== _chartDrag.chartId) return;
-  var area = chart.chartArea;
-  if (!area) return;
-  var rect = chart.canvas.getBoundingClientRect();
-  var x = Math.max(area.left, Math.min(area.right, e.clientX - rect.left));
-
-  var endVal = getXValueFromPixel(chart, x);
-  if (endVal == null || _chartDrag.startLabel == null) return;
-
-  var startVal = _chartDrag.startLabel;
-  var mu = (startVal + endVal) / 2;
-  var range = Math.abs(endVal - startVal);
-  var sigma = Math.max(range / 2, dualMarket.current.binWidth / 2);
-  setMuSigmaFromChart(mu, sigma);
-}
-
-function chartInteractionMouseUp(e, chart) {
-  if (_chartDrag.active) {
-    // Re-enable pan
-    if (chart.options.plugins.zoom && chart.options.plugins.zoom.pan) {
-      chart.options.plugins.zoom.pan.enabled = true;
-      chart.update('none');
-    }
-    _chartDrag.active = false;
-    return;
-  }
-}
-
-function chartInteractionClick(e, chart) {
   if (!dualMarket || !dualMarket.initialized) return;
-  if (e.shiftKey) return; // shift was used for drag, ignore click
   var rect = chart.canvas.getBoundingClientRect();
   var x = e.clientX - rect.left;
   var y = e.clientY - rect.top;
-  if (!isInChartArea(chart, x, y)) return;
 
-  var val = getXValueFromPixel(chart, x);
-  if (val != null) setMuFromChart(val);
+  // Update cursor based on hover position
+  if (!_chartDrag.active) {
+    chart.canvas.style.cursor = isInChartArea(chart, x, y) ? 'crosshair' : '';
+    return;
+  }
+
+  if (chart.canvas.id !== _chartDrag.chartId) return;
+  _chartDrag.moved = true;
+
+  var area = chart.chartArea;
+  if (!area) return;
+
+  // Clamp to chart area
+  var cx = Math.max(area.left, Math.min(area.right, x));
+  var cy = Math.max(area.top, Math.min(area.bottom, y));
+
+  var mu = getXValueFromPixel(chart, cx);
+  var conf = getConfFromPixelY(chart, cy);
+  if (mu != null && conf != null) {
+    setMuConfFromChart(mu, conf);
+  }
+}
+
+function chartInteractionMouseUp(e, chart) {
+  if (!_chartDrag.active) return;
+  var wasDrag = _chartDrag.moved;
+  _chartDrag.active = false;
+  _chartDrag.moved = false;
+
+  var rect = chart.canvas.getBoundingClientRect();
+  var x = e.clientX - rect.left;
+  var y = e.clientY - rect.top;
+  chart.canvas.style.cursor = isInChartArea(chart, x, y) ? 'crosshair' : '';
+
+  // If no significant movement, treat as click — set mu only
+  if (!wasDrag) {
+    var val = getXValueFromPixel(chart, x);
+    if (val != null) setMuFromChart(val);
+  }
 }
 
 function setMuFromChart(mu) {
@@ -1063,7 +1076,7 @@ function setMuFromChart(mu) {
   schedulePreview();
 }
 
-function setMuSigmaFromChart(mu, sigma) {
+function setMuConfFromChart(mu, conf) {
   if (!dualMarket || !dualMarket.current) return;
   var min = dualMarket.current.rangeMin;
   var max = dualMarket.current.rangeMax;
@@ -1071,13 +1084,8 @@ function setMuSigmaFromChart(mu, sigma) {
   document.getElementById('distMuSlider').value = mu;
   document.getElementById('distMuInput').value = mu.toFixed(1);
 
-  var range = max - min;
-  var maxSigma = range / 2;
-  var minSigma = range / (dualMarket.current.N * 2);
-  sigma = Math.max(minSigma, Math.min(maxSigma, sigma));
-  var conf = (maxSigma - sigma) / (maxSigma - minSigma) * 100;
   conf = Math.max(0, Math.min(100, conf));
-  document.getElementById('distConfSlider').value = Math.round(conf);
+  document.getElementById('distConfSlider').value = conf;
 
   updateDistLabels();
   schedulePreview();
@@ -1101,18 +1109,11 @@ function attachChartInteraction(chartId) {
   });
   canvas.addEventListener('mouseleave', function () {
     if (_chartDrag.active) {
-      // Re-enable pan on leave
-      var chart = charts[chartId];
-      if (chart && chart.options.plugins.zoom && chart.options.plugins.zoom.pan) {
-        chart.options.plugins.zoom.pan.enabled = true;
-        chart.update('none');
-      }
       _chartDrag.active = false;
+      _chartDrag.moved = false;
     }
-  });
-  canvas.addEventListener('click', function (e) {
-    var chart = charts[chartId];
-    if (chart) chartInteractionClick(e, chart);
+    var canvas = document.getElementById(chartId);
+    if (canvas) canvas.style.cursor = '';
   });
   canvas._chartInteractionAttached = true;
 }
