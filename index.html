@@ -1287,6 +1287,38 @@ select.control-input { cursor: pointer; }
 <script src="comparison.js"></script>
 <script>
 // ============================================================
+// CHART.JS PLUGIN: Winning bin vertical marker
+// ============================================================
+Chart.register({
+  id: 'winBinMarker',
+  afterDraw: function (chart) {
+    var opts = (chart.options.plugins && chart.options.plugins.winBinMarker) || {};
+    var winBin = opts.winBin;
+    if (winBin == null || winBin < 0) return;
+    var meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data || !meta.data[winBin]) return;
+    var x = meta.data[winBin].x;
+    var ctx = chart.ctx;
+    var area = chart.chartArea;
+    if (!area) return;
+    var colors = getChartColors();
+    ctx.save();
+    ctx.beginPath();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = colors.success;
+    ctx.lineWidth = 2;
+    ctx.moveTo(x, area.top);
+    ctx.lineTo(x, area.bottom);
+    ctx.stroke();
+    ctx.fillStyle = colors.success;
+    ctx.font = 'bold 10px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('WIN', x, area.top - 4);
+    ctx.restore();
+  }
+});
+
+// ============================================================
 // TAB SWITCHING
 // ============================================================
 function switchMainTab(tabId, btn) {
@@ -1669,6 +1701,8 @@ function createMarket() {
   document.getElementById('distMuSlider').min = rangeMin;
   document.getElementById('distMuSlider').max = rangeMax;
   document.getElementById('distMuSlider').value = (rangeMin + rangeMax) / 2;
+  document.getElementById('distMuInput').min = rangeMin;
+  document.getElementById('distMuInput').max = rangeMax;
   document.getElementById('distMuInput').value = (rangeMin + rangeMax) / 2;
   updateDistLabels();
 
@@ -1676,8 +1710,18 @@ function createMarket() {
   document.getElementById('resolveSlider').min = rangeMin;
   document.getElementById('resolveSlider').max = rangeMax;
   document.getElementById('resolveSlider').value = (rangeMin + rangeMax) / 2;
+  document.getElementById('resolveInput').min = rangeMin;
+  document.getElementById('resolveInput').max = rangeMax;
   document.getElementById('resolveInput').value = (rangeMin + rangeMax) / 2;
   document.getElementById('resolveKernelWidthDisplay').textContent = kernelWidth;
+
+  // Reset resolve state
+  lastResolveValue = null;
+  document.getElementById('resolveBtn').textContent = 'Resolve';
+  document.getElementById('resolvePrevValue').textContent = '\u2014';
+  document.getElementById('resolveSummaryCard').style.display = 'none';
+  document.getElementById('payoutTableWrapper').style.display = 'none';
+  document.getElementById('kernelVizCard').style.display = 'none';
 
   // Enable trading tabs
   enableTradingTabs();
@@ -1725,6 +1769,7 @@ function topUpTrader(name) {
   t.improvedWallet += amount;
   renderTraderList();
   refreshTraderCharts();
+  refreshDistCharts();
   showToast('Topped up ' + name + ' by $' + formatCompact(amount), 'info');
 }
 
@@ -1821,6 +1866,13 @@ document.getElementById('distMuSlider').addEventListener('input', function () {
   updateDistPreview();
 });
 document.getElementById('distMuInput').addEventListener('input', function () {
+  var min = parseFloat(document.getElementById('distMuSlider').min);
+  var max = parseFloat(document.getElementById('distMuSlider').max);
+  var v = parseFloat(this.value);
+  if (!isNaN(v) && !isNaN(min) && !isNaN(max)) {
+    v = Math.max(min, Math.min(max, v));
+    this.value = v;
+  }
   document.getElementById('distMuSlider').value = this.value;
   updateDistLabels();
   updateDistPreview();
@@ -2158,8 +2210,199 @@ document.getElementById('distTraderSelect').addEventListener('change', function 
   refreshDistCharts();
 });
 
+// ============================================================
+// PHASE 5: RESOLVE TAB
+// ============================================================
+var lastResolveValue = null;
+
 function resolveMarket() {
-  showToast('Resolution will be wired in Phase 5', 'info');
+  if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first', 'error');
+
+  var value = parseFloat(document.getElementById('resolveInput').value);
+  if (isNaN(value)) return showToast('Invalid resolve value', 'error');
+
+  var rangeMin = dualMarket.current.rangeMin;
+  var rangeMax = dualMarket.current.rangeMax;
+  if (value < rangeMin || value > rangeMax) {
+    return showToast('Value must be in range [' + rangeMin + ', ' + rangeMax + ']', 'error');
+  }
+
+  var result = dualMarket.resolve(value);
+  if (result.error) return showToast(result.error, 'error');
+  if (result.current && result.current.error) return showToast('Current: ' + result.current.error, 'error');
+  if (result.improved && result.improved.error) return showToast('Improved: ' + result.improved.error, 'error');
+
+  // Show previous resolve value
+  if (lastResolveValue !== null) {
+    document.getElementById('resolvePrevValue').textContent = lastResolveValue.toFixed(1);
+  }
+  lastResolveValue = value;
+
+  // Render resolve UI
+  renderResolveSummary(result, value);
+  renderPayoutTable(result);
+  renderKernelChart(result.improved.winningBin);
+
+  // Show sections
+  document.getElementById('resolveSummaryCard').style.display = '';
+  document.getElementById('payoutTableWrapper').style.display = '';
+  document.getElementById('kernelVizCard').style.display = '';
+
+  // Update button text for re-resolve
+  document.getElementById('resolveBtn').textContent = 'Re-resolve';
+
+  // Apply winning bin markers on trading charts
+  applyResolutionMarkers();
+
+  var label = dualMarket.current.getLabels()[result.current.winningBin] || result.current.winningBin;
+  showToast('Resolved at ' + value.toFixed(1) + ' \u2192 bin ' + result.current.winningBin + ' (' + label + ')', 'resolve');
+}
+
+// --- Payout Comparison Summary (P5-3) ---
+function renderResolveSummary(result, value) {
+  var grid = document.getElementById('resolveSummaryGrid');
+  var winBin = result.current.winningBin;
+  var label = dualMarket.current.getLabels()[winBin] || winBin;
+
+  var cTotal = 0, iTotal = 0;
+  for (var i = 0; i < result.current.payouts.length; i++) cTotal += result.current.payouts[i].payout;
+  for (var i = 0; i < result.improved.payouts.length; i++) iTotal += result.improved.payouts[i].payout;
+
+  var delta = iTotal - cTotal;
+  var deltaClass = delta >= 0 ? 'positive' : 'negative';
+  var deltaSign = delta >= 0 ? '+' : '';
+
+  grid.innerHTML = '' +
+    '<div class="result-item"><div class="result-label">Resolve Value</div><div class="result-value">' + value.toFixed(1) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Winning Bin</div><div class="result-value">' + winBin + ' (' + label + ')</div></div>' +
+    '<div class="result-item"><div class="result-label">Vault (k)</div><div class="result-value">' + formatCompact(dualMarket.current.k) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Solvency Factor</div><div class="result-value">' + (result.improved.claimScale * 100).toFixed(2) + '%</div></div>' +
+    '<div class="result-item"><div class="result-label">Current Payouts</div><div class="result-value">' + formatCompact(cTotal) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Improved Payouts</div><div class="result-value">' + formatCompact(iTotal) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Current LP Residual</div><div class="result-value">' + formatCompact(result.current.lpResidual) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Improved LP Residual</div><div class="result-value">' + formatCompact(result.improved.lpResidual) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Payout Delta (I-C)</div><div class="result-value ' + deltaClass + '">' + deltaSign + formatCompact(delta) + '</div></div>';
+}
+
+// --- Dual Payout Table (P5-2) ---
+function renderPayoutRow(p, model, separator) {
+  var pnlPct = p.spent > 0 ? (p.netPnL / p.spent * 100).toFixed(1) : '0.0';
+  var pnlClass = p.netPnL >= 0 ? 'pnl-positive' : 'pnl-negative';
+  var pnlSign = p.netPnL >= 0 ? '+' : '';
+  var modelLabel = model === 'current' ? 'WTA' : 'Kernel';
+  var rowClass = 'row-' + model + (separator ? ' row-separator' : '');
+
+  return '<tr class="' + rowClass + '">' +
+    '<td style="font-weight:700;color:var(--text-heading);text-align:left;">' + p.name + ' (' + p.type + ')</td>' +
+    '<td>' + modelLabel + '</td>' +
+    '<td style="text-align:left;font-size:0.78rem;">' + p.detail + '</td>' +
+    '<td>' + formatCompact(p.grossPayout) + '</td>' +
+    '<td>' + formatCompact(p.fee) + '</td>' +
+    '<td>' + formatCompact(p.payout) + '</td>' +
+    '<td>' + formatCompact(p.spent) + '</td>' +
+    '<td>' + formatCompact(p.received) + '</td>' +
+    '<td class="' + pnlClass + '">' + pnlSign + formatCompact(p.netPnL) + '</td>' +
+    '<td class="' + pnlClass + '">' + pnlSign + pnlPct + '%</td>' +
+    '</tr>';
+}
+
+function renderPayoutTable(result) {
+  var tbody = document.getElementById('payoutTableBody');
+  var cPayouts = result.current.payouts;
+  var iPayouts = result.improved.payouts;
+
+  // Map improved payouts by name+type
+  var iMap = {};
+  for (var i = 0; i < iPayouts.length; i++) {
+    iMap[iPayouts[i].name + ':' + iPayouts[i].type] = iPayouts[i];
+  }
+
+  var html = '';
+  for (var i = 0; i < cPayouts.length; i++) {
+    var cp = cPayouts[i];
+    var ip = iMap[cp.name + ':' + cp.type];
+    var isLast = (i === cPayouts.length - 1);
+
+    html += renderPayoutRow(cp, 'current', false);
+    if (ip) {
+      html += renderPayoutRow(ip, 'improved', !isLast);
+    }
+  }
+
+  tbody.innerHTML = html;
+}
+
+// --- Kernel Visualization (P5-4) ---
+function renderKernelChart(winBin) {
+  var kernel = dualMarket.improved.getSettlementKernel(winBin);
+  var labels = dualMarket.improved.getLabels();
+  var colors = getChartColors();
+
+  var barColors = [], borderCol = [];
+  for (var i = 0; i < kernel.length; i++) {
+    if (kernel[i] > 0) {
+      barColors.push(i === winBin ? colors.success + 'CC' : colors.accent + '66');
+      borderCol.push(i === winBin ? colors.success : colors.accent);
+    } else {
+      barColors.push('transparent');
+      borderCol.push('transparent');
+    }
+  }
+
+  getOrCreateChart('kernelChart', {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Kernel Weight',
+        data: kernel,
+        backgroundColor: barColors,
+        borderColor: borderCol,
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        winBinMarker: { winBin: winBin },
+        tooltip: {
+          callbacks: {
+            title: function (items) { return 'Bin ' + items[0].dataIndex; },
+            label: function (ctx) { return 'K = ' + ctx.raw.toFixed(4); },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: colors.textMuted, font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 20 },
+          grid: { color: colors.border + '33' },
+        },
+        y: {
+          min: 0, max: 1.1,
+          title: { display: true, text: 'Kernel Weight', color: colors.textMuted, font: { size: 10 } },
+          ticks: { color: colors.textMuted, font: { size: 9 } },
+          grid: { color: colors.border + '33' },
+        },
+      },
+    },
+  });
+}
+
+// --- Resolution Chart Markers (P5-6) ---
+function applyResolutionMarkers() {
+  if (!dualMarket || !dualMarket.current || !dualMarket.current.resolved) return;
+  var winBin = dualMarket.current.winningBin;
+  var chartIds = ['traderCurrentChart', 'traderImprovedChart', 'distCurrentChart', 'distImprovedChart'];
+  for (var c = 0; c < chartIds.length; c++) {
+    var chart = charts[chartIds[c]];
+    if (chart) {
+      if (!chart.options.plugins) chart.options.plugins = {};
+      chart.options.plugins.winBinMarker = { winBin: winBin };
+      chart.update('none');
+    }
+  }
 }
 
 // ============================================================

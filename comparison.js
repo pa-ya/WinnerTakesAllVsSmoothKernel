@@ -118,6 +118,11 @@ function updateAllCharts() {
     }
     // Re-apply dataset visibility from checkbox states after chart recreation
     if (typeof reapplyDatasetToggles === 'function') reapplyDatasetToggles();
+    // Re-apply resolution markers and kernel chart if resolved
+    if (typeof applyResolutionMarkers === 'function') applyResolutionMarkers();
+    if (dualMarket.current.resolved && typeof renderKernelChart === 'function') {
+      renderKernelChart(dualMarket.current.winningBin);
+    }
   }
 }
 

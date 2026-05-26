@@ -127,12 +127,12 @@ Show the key differing formulas at the top of each market column:
 > **Goal:** Resolution with dual payout table showing both WTA and kernel payouts
 > side by side for direct comparison.
 
-- [ ] **P5-1:** Resolution controls (value slider/input, resolve/re-resolve button)
-- [ ] **P5-2:** Dual payout table (two rows per participant, color-coded)
-- [ ] **P5-3:** Payout comparison summary (totals, LP residual, solvency factor)
-- [ ] **P5-4:** Kernel visualization (triangular kernel shape chart)
-- [ ] **P5-5:** Re-resolve support (update payouts, show previous value)
-- [ ] **P5-6:** Resolution charts (winning bin marker, kernel overlay)
+- [x] **P5-1:** Resolution controls (value slider/input, resolve/re-resolve button)
+- [x] **P5-2:** Dual payout table (two rows per participant, color-coded)
+- [x] **P5-3:** Payout comparison summary (totals, LP residual, solvency factor)
+- [x] **P5-4:** Kernel visualization (triangular kernel shape chart)
+- [x] **P5-5:** Re-resolve support (update payouts, show previous value)
+- [x] **P5-6:** Resolution charts (winning bin marker, kernel overlay)
 
 ---
 
@@ -223,7 +223,7 @@ Source code to port/adapt from:
 | P2 | Done | Setup tab | P0, P1 |
 | P3 | Done | Trader tab | P0, P1, P2 |
 | P4 | Done | Distribution tab | P0, P1, P2 |
-| P5 | | Resolve tab | P0, P1, P2 |
+| P5 | Done | Resolve tab | P0, P1, P2 |
 | P6 | | Combined chart mode | P3 or P4 |
 | P7 | | Axis drag interactivity | P3 or P4 |
 | P8 | | Settings & polish | All above |
