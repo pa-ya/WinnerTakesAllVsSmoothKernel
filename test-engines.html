@@ -1,22 +1,44 @@
 <!DOCTYPE html>
 <html>
-<head><title>Engine Tests</title></head>
+<head><title>Engine Tests</title>
+<style>
+  body { font-family: monospace; background: #111; color: #eee; padding: 20px; }
+  .suite { margin: 12px 0 4px; font-weight: bold; color: #94a3b8; }
+  .pass { color: #22c55e; }
+  .fail { color: #ef4444; font-weight: bold; }
+  .summary { margin-top: 16px; font-size: 1.2em; padding: 8px; border-top: 1px solid #334155; }
+</style>
+</head>
 <body>
+<div id="output"></div>
 <script src="comparison.js"></script>
 <script>
-// Verification tests for Phase 0 — run in browser console
 (function () {
   var pass = 0, fail = 0;
+  var outputEl = document.getElementById('output');
+
+  function log(html) { outputEl.innerHTML += html + '<br>'; }
+  function suite(name) { log('<div class="suite">--- ' + name + ' ---</div>'); console.log('\n--- ' + name + ' ---'); }
+
   function assert(cond, msg) {
-    if (cond) { pass++; console.log('  PASS: ' + msg); }
-    else { fail++; console.error('  FAIL: ' + msg); }
+    if (cond) { pass++; log('<span class="pass">  PASS</span>: ' + msg); console.log('  PASS: ' + msg); }
+    else { fail++; log('<span class="fail">  FAIL</span>: ' + msg); console.error('  FAIL: ' + msg); }
   }
+
   function near(a, b, eps) { return Math.abs(a - b) < (eps || 0.01); }
 
-  console.log('=== Phase 0 Engine Verification ===');
+  function sumArray(arr) { var s = 0; for (var i = 0; i < arr.length; i++) s += arr[i]; return s; }
 
-  // --- Test 1: Initialization ---
-  console.log('\n--- Test 1: Initialization ---');
+  function ammInvariant(market) {
+    var sumSq = 0;
+    for (var j = 0; j < market.N; j++) sumSq += market.positions[j] * market.positions[j];
+    return Math.sqrt(sumSq);
+  }
+
+  // ============================================================
+  // 1. INITIALIZATION
+  // ============================================================
+  suite('1. Initialization');
   var dm = new DualMarket();
   dm.init(32, 0, 100, 10000, { tradeFeeBps: 0 }, 3);
 
@@ -25,152 +47,989 @@
   assert(near(dm.current.k, 10000), 'Current k = 10000');
   assert(near(dm.improved.k, 10000), 'Improved k = 10000');
   assert(dm.improved.kernelWidth === 3, 'Kernel width = 3');
+  assert(dm.initialized === true, 'DualMarket initialized flag set');
 
-  // Positions should be identical
   var sync = dm.verifySync();
   assert(sync.synced, 'Positions synced after init (drift=' + sync.maxPositionDrift.toFixed(6) + ')');
 
-  // Probabilities differ in formula but should sum to 1
   var cProbs = dm.current.getProbabilities();
   var iProbs = dm.improved.getProbabilities();
-  var cSum = cProbs.reduce(function (a, b) { return a + b; }, 0);
-  var iSum = iProbs.reduce(function (a, b) { return a + b; }, 0);
-  assert(near(cSum, 1, 0.001), 'Current probs sum to 1 (got ' + cSum.toFixed(6) + ')');
-  assert(near(iSum, 1, 0.001), 'Improved probs sum to 1 (got ' + iSum.toFixed(6) + ')');
+  assert(near(sumArray(cProbs), 1, 0.001), 'Current probs sum to 1');
+  assert(near(sumArray(iProbs), 1, 0.001), 'Improved probs sum to 1');
+  assert(near(cProbs[0], 1 / 32, 0.001), 'Current uniform prob = 1/N');
+  assert(near(iProbs[0], 1 / 32, 0.001), 'Improved uniform prob = 1/N');
 
-  // At uniform, both should be 1/N
-  assert(near(cProbs[0], 1 / 32, 0.001), 'Current uniform prob = 1/32');
-  assert(near(iProbs[0], 1 / 32, 0.001), 'Improved uniform prob = 1/32');
+  assert(near(ammInvariant(dm.current), 10000, 0.01), 'Current AMM invariant: sqrt(sum(x^2)) = k');
+  assert(near(ammInvariant(dm.improved), 10000, 0.01), 'Improved AMM invariant: sqrt(sum(x^2)) = k');
 
-  // AMM invariant: sum(x^2) = k^2
-  var sumSqC = 0, sumSqI = 0;
-  for (var j = 0; j < 32; j++) {
-    sumSqC += dm.current.positions[j] * dm.current.positions[j];
-    sumSqI += dm.improved.positions[j] * dm.improved.positions[j];
-  }
-  assert(near(sumSqC, 10000 * 10000, 1), 'Current AMM invariant holds');
-  assert(near(sumSqI, 10000 * 10000, 1), 'Improved AMM invariant holds');
+  // Labels
+  var labels = dm.current.getLabels();
+  assert(labels.length === 32, 'Labels count = N');
+  assert(labels[0] === '0-3', 'First label = 0-3');
+  assert(labels[31] === '97-100', 'Last label = 97-100');
 
-  // --- Test 2: Discrete Buy ---
-  console.log('\n--- Test 2: Discrete Buy ---');
+  // ============================================================
+  // 2. DISCRETE BUY
+  // ============================================================
+  suite('2. Discrete buy');
   dm.addTrader('Alice', 50000);
   var buyResult = dm.discreteBuy('Alice', 10, 5000);
   assert(!buyResult.error, 'Dual buy succeeded');
-  assert(!buyResult.current.error, 'Current buy no error');
-  assert(!buyResult.improved.error, 'Improved buy no error');
+  assert(near(buyResult.current.tokensOut, buyResult.improved.tokensOut, 0.001), 'TokensOut identical across engines');
+  assert(buyResult.current.tokensOut > 0, 'Tokens received > 0');
+  assert(buyResult.current.fee === 0, 'Fee = 0 when tradeFeeBps = 0');
 
-  // Trade outputs should be identical (same L2 AMM)
-  assert(near(buyResult.current.tokensOut, buyResult.improved.tokensOut, 0.001),
-    'TokensOut identical: ' + buyResult.current.tokensOut.toFixed(4) + ' vs ' + buyResult.improved.tokensOut.toFixed(4));
-  assert(near(buyResult.current.fee, buyResult.improved.fee),
-    'Fee identical');
-
-  // Probabilities should differ
-  assert(!near(buyResult.current.newProb, buyResult.improved.newProb, 0.001),
-    'NewProb differs: current=' + buyResult.current.newProb.toFixed(6) + ' improved=' + buyResult.improved.newProb.toFixed(6));
-
-  // Positions should still be synced
   sync = dm.verifySync();
-  assert(sync.synced, 'Positions still synced after buy (drift=' + sync.maxPositionDrift.toFixed(6) + ')');
+  assert(sync.synced, 'Positions synced after buy');
+  assert(near(ammInvariant(dm.current), dm.current.k, 0.01), 'AMM invariant holds after buy');
 
-  // Wallets: both engines deducted 5000
+  // Prob shifted
+  var probsAfter = dm.current.getProbabilities();
+  assert(probsAfter[10] > 1 / 32, 'Bought bin probability increased');
+  assert(near(sumArray(probsAfter), 1, 0.001), 'Probs still sum to 1 after buy');
+
+  // Wallet deducted
   var bal = dm.getTraderBalance('Alice');
   assert(near(bal.current, 45000), 'Current wallet = 45000');
   assert(near(bal.improved, 45000), 'Improved wallet = 45000');
 
-  // --- Test 3: Discrete Sell ---
-  console.log('\n--- Test 3: Discrete Sell ---');
+  // Probs differ between engines (quadratic vs linear)
+  var iProbs2 = dm.improved.getProbabilities();
+  assert(!near(probsAfter[10], iProbs2[10], 0.001), 'Prob formulas differ: current=' + probsAfter[10].toFixed(6) + ' improved=' + iProbs2[10].toFixed(6));
+
+  // ============================================================
+  // 3. DISCRETE SELL
+  // ============================================================
+  suite('3. Discrete sell');
   var sellResult = dm.discreteSell('Alice', 10, 1000);
   assert(!sellResult.error, 'Dual sell succeeded');
-  assert(near(sellResult.current.collateralOut, sellResult.improved.collateralOut, 0.001),
-    'Sell collateralOut identical');
+  assert(near(sellResult.current.collateralOut, sellResult.improved.collateralOut, 0.001), 'Sell collateralOut identical');
+  assert(sellResult.current.collateralOut > 0, 'CollateralOut > 0');
 
   sync = dm.verifySync();
   assert(sync.synced, 'Positions synced after sell');
+  assert(near(ammInvariant(dm.current), dm.current.k, 0.01), 'AMM invariant holds after sell');
 
-  // --- Test 4: Distribution Buy ---
-  console.log('\n--- Test 4: Distribution Buy ---');
+  // ============================================================
+  // 4. DISTRIBUTION BUY
+  // ============================================================
+  suite('4. Distribution buy');
   dm.addTrader('Bob', 30000);
   var distBuy = dm.distributionBuy('Bob', 50, 10, 8000);
   assert(!distBuy.error, 'Dist buy succeeded');
-  assert(near(distBuy.current.totalTokens, distBuy.improved.totalTokens, 0.001),
-    'Dist buy totalTokens identical');
+  assert(near(distBuy.current.totalTokens, distBuy.improved.totalTokens, 0.001), 'Dist buy totalTokens identical');
+  assert(distBuy.current.tokensPerBin.length === 32, 'tokensPerBin has N entries');
+
+  // Gaussian shape: peak near mu=50, bin 16 (center of range)
+  var peakBin = distBuy.current.peakBin;
+  assert(peakBin >= 14 && peakBin <= 18, 'Peak bin near mu=50 (bin ' + peakBin + ')');
+
+  // Bins far from mu should get fewer tokens
+  assert(distBuy.current.tokensPerBin[peakBin] > distBuy.current.tokensPerBin[0], 'Peak bin gets more tokens than edge bin');
 
   sync = dm.verifySync();
   assert(sync.synced, 'Positions synced after dist buy');
 
-  // --- Test 5: Distribution Sell ---
-  console.log('\n--- Test 5: Distribution Sell ---');
+  // ============================================================
+  // 5. DISTRIBUTION SELL
+  // ============================================================
+  suite('5. Distribution sell');
   var distSell = dm.distributionSell('Bob', 50, 10, 2000);
   assert(!distSell.error, 'Dist sell succeeded');
-  assert(near(distSell.current.collateralOut, distSell.improved.collateralOut, 0.001),
-    'Dist sell collateralOut identical');
+  assert(near(distSell.current.collateralOut, distSell.improved.collateralOut, 0.001), 'Dist sell collateralOut identical');
+  assert(distSell.current.totalSold > 0, 'totalSold > 0');
 
   sync = dm.verifySync();
   assert(sync.synced, 'Positions synced after dist sell');
 
-  // --- Test 6: Resolution ---
-  console.log('\n--- Test 6: Resolution ---');
+  // ============================================================
+  // 6. SELL ALL
+  // ============================================================
+  suite('6. Sell all');
+  var dm6 = new DualMarket();
+  dm6.init(16, 0, 100, 5000, {}, 2);
+  dm6.addTrader('Eve', 10000);
+  dm6.discreteBuy('Eve', 5, 2000);
+  dm6.distributionBuy('Eve', 60, 15, 3000);
+  var kBefore = dm6.current.k;
+  var sellAllResult = dm6.sellAll('Eve');
+  assert(!sellAllResult.error, 'Sell all succeeded');
+  assert(near(sellAllResult.current.collateralOut, sellAllResult.improved.collateralOut, 0.01), 'Sell all collateralOut identical');
+  assert(sellAllResult.current.tokensReturned > 0, 'Tokens returned > 0');
+
+  // After sell all, trader should have 0 holdings
+  var eveTh = dm6.current.traderHoldings['Eve'];
+  var totalRemaining = 0;
+  for (var j = 0; j < 16; j++) totalRemaining += eveTh.holdings[j];
+  assert(near(totalRemaining, 0, 0.001), 'All holdings zeroed after sell all');
+  assert(near(ammInvariant(dm6.current), dm6.current.k, 0.01), 'AMM invariant holds after sell all');
+
+  // k should decrease (collateral returned)
+  assert(dm6.current.k < kBefore, 'k decreased after sell all');
+
+  // Wallet should have received collateral
+  var eveBal = dm6.getTraderBalance('Eve');
+  assert(eveBal.current > 0, 'Wallet has collateral after sell all');
+
+  // ============================================================
+  // 7. RESOLUTION — WTA vs KERNEL
+  // ============================================================
+  suite('7. Resolution — WTA vs Kernel');
   var resolveResult = dm.resolve(50);
   assert(!resolveResult.error, 'Resolve succeeded');
-  assert(resolveResult.current.winningBin === resolveResult.improved.winningBin,
-    'Same winning bin: ' + resolveResult.current.winningBin);
+  assert(resolveResult.current.winningBin === resolveResult.improved.winningBin, 'Same winning bin');
 
-  // Current: WTA (only winning bin pays)
-  // Improved: Kernel (nearby bins contribute)
+  // Vault identity: all payouts sum to k
   var cPayouts = resolveResult.current.payouts;
   var iPayouts = resolveResult.improved.payouts;
-  console.log('  Current payouts:');
-  cPayouts.forEach(function (p) {
-    console.log('    ' + p.name + ' (' + p.type + '): payout=' + p.payout.toFixed(2) + ' PnL=' + p.netPnL.toFixed(2));
+  var cTotal = 0, iTotal = 0;
+  cPayouts.forEach(function (p) { cTotal += p.payout; });
+  iPayouts.forEach(function (p) { iTotal += p.payout; });
+  assert(near(cTotal, dm.current.k, 1), 'Current vault identity: payouts ~= k');
+  assert(near(iTotal, dm.improved.k, 1), 'Improved vault identity: payouts ~= k');
+
+  assert(resolveResult.improved.claimScale <= 1, 'claimScale <= 1');
+
+  // In WTA, only the winning bin trader gets tokens; kernel distributes more broadly
+  var cAlice = cPayouts.find(function (p) { return p.name === 'Alice'; });
+  var iAlice = iPayouts.find(function (p) { return p.name === 'Alice'; });
+  assert(cAlice && iAlice, 'Alice in both payouts');
+
+  // ============================================================
+  // 8. KERNEL WIDTH 0 = WTA
+  // ============================================================
+  suite('8. Kernel width 0 = WTA');
+  var dm8 = new DualMarket();
+  dm8.init(16, 0, 100, 5000, {}, 0);
+  dm8.addTrader('Test', 10000);
+  dm8.discreteBuy('Test', 5, 2000);
+  var r8 = dm8.resolve(35);
+  var cPay = r8.current.payouts.find(function (p) { return p.name === 'Test'; });
+  var iPay = r8.improved.payouts.find(function (p) { return p.name === 'Test'; });
+  assert(near(cPay.payout, iPay.payout, 1), 'W=0: payouts match (c=' + cPay.payout.toFixed(2) + ' i=' + iPay.payout.toFixed(2) + ')');
+
+  // ============================================================
+  // 9. KERNEL SHAPE
+  // ============================================================
+  suite('9. Kernel shape — triangular decay');
+  var im9 = new ImprovedMarket(16, 0, 100, 5000, { kernelWidth: 3 });
+  var kernel = im9.getSettlementKernel(8);
+  assert(kernel.length === 16, 'Kernel has N entries');
+  assert(kernel[8] === 1.0, 'Winning bin kernel weight = 1.0');
+  assert(near(kernel[9], 0.75, 0.001), 'Adjacent bin (d=1): w = 1-1/4 = 0.75');
+  assert(near(kernel[10], 0.5, 0.001), 'd=2: w = 1-2/4 = 0.5');
+  assert(near(kernel[11], 0.25, 0.001), 'd=3: w = 1-3/4 = 0.25');
+  assert(kernel[12] === 0, 'd=4 (outside W): w = 0');
+  assert(kernel[0] === 0, 'Far bin: w = 0');
+
+  // Edge bin kernel — should not go out of bounds
+  var kernelEdge = im9.getSettlementKernel(0);
+  assert(kernelEdge[0] === 1.0, 'Edge bin 0: kernel weight = 1.0');
+  assert(near(kernelEdge[1], 0.75, 0.001), 'Edge: adjacent = 0.75');
+  assert(near(kernelEdge[3], 0.25, 0.001), 'Edge: d=3 = 0.25');
+  assert(kernelEdge[4] === 0, 'Edge: d=4 = 0');
+
+  // Last bin
+  var kernelLast = im9.getSettlementKernel(15);
+  assert(kernelLast[15] === 1.0, 'Last bin: kernel weight = 1.0');
+  assert(near(kernelLast[14], 0.75, 0.001), 'Last: d=1 = 0.75');
+  assert(near(kernelLast[12], 0.25, 0.001), 'Last: d=3 = 0.25');
+
+  // ============================================================
+  // 10. KERNEL WIDTH LARGER THAN N
+  // ============================================================
+  suite('10. Large kernel width');
+  var imBig = new ImprovedMarket(4, 0, 100, 5000, { kernelWidth: 10 });
+  var kernelBig = imBig.getSettlementKernel(2);
+  assert(kernelBig[2] === 1.0, 'Win bin = 1.0');
+  // All bins within W=10, so all should be > 0
+  for (var j = 0; j < 4; j++) {
+    assert(kernelBig[j] > 0, 'Bin ' + j + ' weight > 0 when W > N (' + kernelBig[j].toFixed(4) + ')');
+  }
+
+  // ============================================================
+  // 11. FEE MECHANICS
+  // ============================================================
+  suite('11. Fee mechanics — trade, LP share, redemption');
+  var dmFee = new DualMarket();
+  dmFee.init(16, 0, 100, 5000, { tradeFeeBps: 200, lpFeeSharePct: 50, redemptionFeeBps: 100 }, 2);
+  dmFee.addTrader('Fiona', 20000);
+
+  var buyFee = dmFee.discreteBuy('Fiona', 5, 10000);
+  // 200 bps = 2% trade fee
+  assert(buyFee.current.fee === Math.floor(10000 * 200 / 10000), 'Trade fee = 2% of gross (got ' + buyFee.current.fee + ')');
+  assert(buyFee.current.fee === 200, 'Fee = 200');
+  // LP fee share = 50% of fee
+  assert(buyFee.current.lpFee === Math.floor(200 * 50 / 100), 'LP fee = 50% of trade fee (got ' + buyFee.current.lpFee + ')');
+  assert(buyFee.current.lpFee === 100, 'lpFee = 100');
+  // Net collateral = gross - fee
+  assert(buyFee.current.net === 10000 - 200, 'Net = gross - fee');
+
+  // Accumulated LP fees should track
+  assert(near(dmFee.current.accumulatedLpFees, 100), 'Accumulated LP fees = 100 after one trade');
+
+  // Sell: fee on collateral out
+  var sellFee = dmFee.discreteSell('Fiona', 5, 500);
+  assert(sellFee.current.fee > 0, 'Sell trade fee > 0');
+  assert(sellFee.current.lpFee > 0, 'Sell LP fee > 0');
+  assert(sellFee.current.collateralOut === sellFee.current.grossOut - sellFee.current.fee, 'Sell: net = gross - fee');
+
+  // Redemption fee at resolution
+  var rFee = dmFee.resolve(35);
+  var fionaC = rFee.current.payouts.find(function (p) { return p.name === 'Fiona'; });
+  assert(fionaC.fee > 0, 'Redemption fee applied at resolution');
+  assert(near(fionaC.fee, fionaC.grossPayout * 100 / 10000, 0.01), 'Redemption fee = 1% of gross payout');
+  assert(near(fionaC.payout, fionaC.grossPayout - fionaC.fee, 0.01), 'Payout = gross - redemption fee');
+
+  // ============================================================
+  // 12. LP OPERATIONS
+  // ============================================================
+  suite('12. LP operations — add/remove liquidity');
+  var dmLp = new DualMarket();
+  dmLp.init(16, 0, 100, 5000, { tradeFeeBps: 100, lpFeeSharePct: 50 }, 2);
+  dmLp.addTrader('LPer', 20000);
+
+  // Add liquidity
+  var addResult = dmLp.addLiquidity('LPer', 5000);
+  assert(!addResult.error, 'Add liquidity succeeded');
+  assert(addResult.current.sharesReceived > 0, 'Received LP shares');
+  assert(near(dmLp.current.k, 10000), 'k doubled to 10000');
+  assert(near(ammInvariant(dmLp.current), dmLp.current.k, 0.01), 'AMM invariant holds after add LP');
+
+  // LP fraction should be 50% (5000 of 10000)
+  assert(near(addResult.current.poolFraction, 0.5, 0.01), 'Pool fraction = 50%');
+
+  // Probabilities unchanged after proportional add
+  var probsLP = dmLp.current.getProbabilities();
+  assert(near(probsLP[0], 1 / 16, 0.001), 'Probs unchanged after uniform LP add');
+
+  // Sync maintained
+  sync = dmLp.verifySync();
+  assert(sync.synced, 'Positions synced after add LP');
+
+  // Trade to generate fees, then remove
+  dmLp.addTrader('Trader1', 10000);
+  dmLp.discreteBuy('Trader1', 5, 3000);
+
+  var removeBefore = dmLp.getTraderBalance('LPer');
+  var removeResult = dmLp.removeLiquidity('LPer', 5000);
+  assert(!removeResult.error, 'Remove liquidity succeeded');
+  assert(removeResult.current.sharesBurned > 0, 'Shares burned > 0');
+  assert(removeResult.current.collateralOut > 0, 'Collateral returned > 0');
+  assert(removeResult.current.totalPayout > 0, 'Total payout includes collateral + fees');
+  assert(near(ammInvariant(dmLp.current), dmLp.current.k, 0.01), 'AMM invariant holds after remove LP');
+
+  // Wallet increased
+  var removeAfter = dmLp.getTraderBalance('LPer');
+  assert(removeAfter.current > removeBefore.current, 'Wallet increased after LP removal');
+
+  // ============================================================
+  // 13. LP PORTFOLIO
+  // ============================================================
+  suite('13. LP portfolio — per-outcome payouts');
+  var dmLpP = new DualMarket();
+  dmLpP.init(16, 0, 100, 5000, { redemptionFeeBps: 100 }, 2);
+  dmLpP.addTrader('T1', 10000);
+  dmLpP.discreteBuy('T1', 5, 3000);
+
+  // Current LP portfolio
+  var lpPortC = dmLpP.current.getLpPortfolio('Creator');
+  assert(lpPortC !== null, 'Current LP portfolio exists');
+  assert(lpPortC.payoutPerOutcome.length === 16, 'payoutPerOutcome has N entries');
+  assert(lpPortC.poolFraction === 1, 'Creator has 100% pool fraction');
+  assert(lpPortC.shares > 0, 'Shares > 0');
+
+  // WTA LP: payout should vary by bin — winning the bin with heavy trader holdings = less for LP
+  assert(lpPortC.payoutPerOutcome[5] < lpPortC.payoutPerOutcome[0],
+    'WTA LP: heavily-traded bin pays LP less (bin5=' + lpPortC.payoutPerOutcome[5].toFixed(0) +
+    ' vs bin0=' + lpPortC.payoutPerOutcome[0].toFixed(0) + ')');
+
+  // Improved LP portfolio
+  var lpPortI = dmLpP.improved.getLpPortfolio('Creator');
+  assert(lpPortI !== null, 'Improved LP portfolio exists');
+  assert(lpPortI.payoutPerOutcome.length === 16, 'Improved payoutPerOutcome has N entries');
+
+  // All LP portfolio
+  var allLpC = dmLpP.current.getAllLpPortfolio();
+  assert(allLpC.poolFraction === 1, 'All LP pool fraction = 1');
+  assert(near(allLpC.deposited, lpPortC.deposited, 0.01), 'All LP deposited matches single LP when solo');
+
+  // ============================================================
+  // 14. PER-OUTCOME TRADER PAYOUTS
+  // ============================================================
+  suite('14. Per-outcome trader payouts');
+  var dmPO = new DualMarket();
+  dmPO.init(16, 0, 100, 5000, { redemptionFeeBps: 0 }, 3);
+  dmPO.addTrader('Meg', 10000);
+  dmPO.discreteBuy('Meg', 8, 3000);
+
+  // Current: WTA, only winning bin pays
+  var cPayouts14 = dmPO.current.getTraderPayoutPerOutcome('Meg');
+  assert(cPayouts14 !== null, 'Current per-outcome payouts exist');
+  assert(cPayouts14.length === 16, 'Has N entries');
+  assert(cPayouts14[8] > 0, 'WTA: winning bin has payout');
+  // WTA: all other bins should be 0 (only bin with holdings pays)
+  var allOtherZero = true;
+  for (var j = 0; j < 16; j++) {
+    if (j !== 8 && cPayouts14[j] > 0.01) allOtherZero = false;
+  }
+  assert(allOtherZero, 'WTA: non-holding bins pay 0');
+
+  // Improved: kernel spreads payout to neighbors
+  var iPayouts14 = dmPO.improved.getTraderPayoutPerOutcome('Meg');
+  assert(iPayouts14 !== null, 'Improved per-outcome payouts exist');
+  assert(iPayouts14[8] > 0, 'Improved: winning bin has payout');
+  assert(iPayouts14[7] > 0, 'Kernel: adjacent bin 7 has payout');
+  assert(iPayouts14[9] > 0, 'Kernel: adjacent bin 9 has payout');
+  assert(iPayouts14[8] > iPayouts14[7], 'Kernel: winning > adjacent');
+  assert(iPayouts14[0] < 0.01, 'Kernel: far bin ~0');
+
+  // ============================================================
+  // 15. SOLVENCY — claimScale < 1
+  // ============================================================
+  suite('15. Solvency scaling (claimScale < 1)');
+  var dmSol = new DualMarket();
+  dmSol.init(8, 0, 100, 1000, {}, 4);  // wide kernel on few bins
+  dmSol.addTrader('S1', 50000);
+  dmSol.addTrader('S2', 50000);
+  // Massive buys to inflate claims
+  dmSol.discreteBuy('S1', 3, 20000);
+  dmSol.discreteBuy('S2', 4, 20000);
+  dmSol.discreteBuy('S1', 5, 10000);
+
+  var rSol = dmSol.resolve(50);
+  assert(rSol.improved.claimScale <= 1, 'claimScale <= 1: ' + rSol.improved.claimScale.toFixed(6));
+
+  // Even with scaling, total payouts must not exceed k
+  var totalPaySol = 0;
+  rSol.improved.payouts.forEach(function (p) { totalPaySol += p.payout; });
+  assert(totalPaySol <= dmSol.improved.k + 0.01, 'Total improved payouts <= k (total=' + totalPaySol.toFixed(2) + ' k=' + dmSol.improved.k.toFixed(2) + ')');
+
+  // P&L accounting: netPnL = payout + received - spent
+  rSol.improved.payouts.forEach(function (p) {
+    if (p.type === 'Trader') {
+      assert(near(p.netPnL, p.payout + p.received - p.spent, 0.01),
+        p.name + ' PnL = payout + received - spent');
+    }
   });
-  console.log('  Improved payouts:');
-  iPayouts.forEach(function (p) {
-    console.log('    ' + p.name + ' (' + p.type + '): payout=' + p.payout.toFixed(2) + ' PnL=' + p.netPnL.toFixed(2));
+
+  // ============================================================
+  // 16. BIN BOUNDARY MAPPING
+  // ============================================================
+  suite('16. Bin boundary mapping');
+  var cm16 = new CurrentMarket(10, 0, 100, 1000, {});
+
+  // Resolve at exact rangeMin
+  var r16a = cm16.resolve(0);
+  assert(r16a.winningBin === 0, 'value=rangeMin resolves to bin 0');
+
+  // Reset for next test
+  cm16 = new CurrentMarket(10, 0, 100, 1000, {});
+  var r16b = cm16.resolve(100);
+  assert(r16b.winningBin === 9, 'value=rangeMax resolves to last bin (clamped)');
+
+  cm16 = new CurrentMarket(10, 0, 100, 1000, {});
+  var r16c = cm16.resolve(50);
+  assert(r16c.winningBin === 5, 'value=50 resolves to bin 5');
+
+  cm16 = new CurrentMarket(10, 0, 100, 1000, {});
+  var r16d = cm16.resolve(10);
+  assert(r16d.winningBin === 1, 'value=10 (boundary) resolves to bin 1');
+
+  // Negative range
+  cm16 = new CurrentMarket(10, -50, 50, 1000, {});
+  var r16e = cm16.resolve(0);
+  assert(r16e.winningBin === 5, 'value=0 in [-50,50] resolves to bin 5');
+
+  // ============================================================
+  // 17. CONSERVATION LAW — total in = total out
+  // ============================================================
+  suite('17. Conservation law');
+  var dmCons = new DualMarket();
+  dmCons.init(16, 0, 100, 10000, { tradeFeeBps: 150, lpFeeSharePct: 40, redemptionFeeBps: 50 }, 2);
+  dmCons.addTrader('A', 20000);
+  dmCons.addTrader('B', 20000);
+  dmCons.addTrader('C', 15000);
+
+  dmCons.discreteBuy('A', 5, 5000);
+  dmCons.distributionBuy('B', 60, 12, 8000);
+  dmCons.discreteBuy('C', 10, 3000);
+  dmCons.addLiquidity('C', 5000);
+  dmCons.discreteSell('A', 5, 500);
+
+  var rCons = dmCons.resolve(55);
+
+  // For each engine: sum of all payouts + all wallet balances should equal initial total
+  ['current', 'improved'].forEach(function (eng) {
+    var totalPayouts = 0;
+    rCons[eng].payouts.forEach(function (p) { totalPayouts += p.payout; });
+
+    // Wallets after resolution: traders A, B, C
+    var walletA = dmCons.traders['A'][eng + 'Wallet'];
+    var walletB = dmCons.traders['B'][eng + 'Wallet'];
+    var walletC = dmCons.traders['C'][eng + 'Wallet'];
+
+    // Total money in system: initial liquidity + all trader initial balances
+    var totalIn = 10000 + 20000 + 20000 + 15000;
+
+    // Total money accounted for: wallets + unclaimed payouts
+    // (payouts are what would be claimed; wallets hold already-returned collateral from sells)
+    var totalAccountedFor = walletA + walletB + walletC + totalPayouts;
+
+    // Protocol fees (non-LP share) are burned/kept by protocol, accounting for the gap
+    var protocolFees = dmCons[eng].accumulatedLpFees;  // already distributed via LP payouts
+    // The trade fees not routed to LP are "protocol revenue" and leave the system
+    // We verify: totalIn >= totalAccountedFor (fees leak out)
+    assert(totalAccountedFor <= totalIn + 0.01,
+      eng + ': money out (' + totalAccountedFor.toFixed(0) + ') <= money in (' + totalIn + ')');
+    assert(totalAccountedFor > totalIn * 0.9,
+      eng + ': not more than 10% lost to fees');
   });
 
-  // Verify vault balance identity for both
-  var cTraderTotal = 0, iTraderTotal = 0;
-  cPayouts.forEach(function (p) { cTraderTotal += p.payout; });
-  iPayouts.forEach(function (p) { iTraderTotal += p.payout; });
-  // For current: sum of all payouts should equal k (within rounding)
-  assert(near(cTraderTotal, dm.current.k, 1), 'Current vault identity: payouts=' + cTraderTotal.toFixed(2) + ' k=' + dm.current.k.toFixed(2));
-  assert(near(iTraderTotal, dm.improved.k, 1), 'Improved vault identity: payouts=' + iTraderTotal.toFixed(2) + ' k=' + dm.improved.k.toFixed(2));
+  // ============================================================
+  // 18. DISTRIBUTION WEIGHT COMPUTATION
+  // ============================================================
+  suite('18. Distribution weight computation (_computeWeights)');
+  var cm18 = new CurrentMarket(16, 0, 100, 5000, {});
 
-  // Solvency: improved claim scale
-  assert(resolveResult.improved.claimScale <= 1, 'Improved claimScale <= 1: ' + resolveResult.improved.claimScale.toFixed(4));
+  // Weights should be Gaussian-shaped, sum to SCALE_WEIGHT
+  var W18 = cm18._computeWeights(50, 10);
+  assert(W18 !== null, 'Weights computed for mu=50, sigma=10');
+  var wSum18 = sumArray(W18);
+  assert(near(wSum18, 1e9, 1), 'Weights sum to SCALE_WEIGHT (1e9)');
 
-  // --- Test 7: Kernel width 0 degrades to WTA ---
-  console.log('\n--- Test 7: Kernel width 0 = WTA ---');
-  var dm2 = new DualMarket();
-  dm2.init(16, 0, 100, 5000, {}, 0);
-  dm2.addTrader('Test', 10000);
-  dm2.discreteBuy('Test', 5, 2000);
-  var r2 = dm2.resolve(35);
-  var cPay = r2.current.payouts.find(function (p) { return p.name === 'Test'; });
-  var iPay = r2.improved.payouts.find(function (p) { return p.name === 'Test'; });
-  assert(near(cPay.payout, iPay.payout, 1),
-    'W=0: payouts match (current=' + cPay.payout.toFixed(2) + ' improved=' + iPay.payout.toFixed(2) + ')');
+  // Peak should be near mu=50 (bin 8, center=53.125)
+  var maxW = 0, maxIdx = 0;
+  for (var j = 0; j < 16; j++) {
+    if (W18[j] > maxW) { maxW = W18[j]; maxIdx = j; }
+  }
+  assert(maxIdx >= 7 && maxIdx <= 9, 'Peak weight near mu=50 (bin ' + maxIdx + ')');
 
-  // --- Test 8: Portfolio ---
-  console.log('\n--- Test 8: Portfolio ---');
-  var dm3 = new DualMarket();
-  dm3.init(32, 0, 100, 10000, {}, 3);
-  dm3.addTrader('Carol', 20000);
-  dm3.discreteBuy('Carol', 15, 3000);
-  var portfolios = dm3.getPortfolios('Carol');
-  assert(portfolios.current !== null, 'Current portfolio exists');
-  assert(portfolios.improved !== null, 'Improved portfolio exists');
-  assert(near(portfolios.current.totalHoldings, portfolios.improved.totalHoldings, 0.01),
-    'Total holdings identical');
-  console.log('  Current expected=' + portfolios.current.expectedPayout.toFixed(2) +
-    ' Improved expected=' + portfolios.improved.expectedPayout.toFixed(2));
+  // Weights should decay away from peak
+  assert(W18[maxIdx] > W18[0], 'Peak > edge weight');
 
-  // --- Summary ---
+  // Moderately tight sigma: weight concentrates near mu
+  var Wtight = cm18._computeWeights(50, 5);
+  assert(Wtight !== null, 'Tight sigma weights computed');
+  var maxTight = Math.max.apply(null, Wtight);
+  assert(maxTight > 0.2e9, 'Tight sigma: peak bin gets > 20% of weight (' + (maxTight / 1e9 * 100).toFixed(1) + '%)');
+
+  // Sigma so tight all bins fall beyond 5-sigma cutoff → null
+  var Wtiny = cm18._computeWeights(50, 0.1);
+  assert(Wtiny === null, 'sigma=0.1 (all bins beyond 5σ cutoff) returns null');
+
+  // Sigma = 0 should return null
+  var Wzero = cm18._computeWeights(50, 0);
+  assert(Wzero === null, 'sigma=0 returns null');
+
+  // Negative sigma should return null
+  var Wneg = cm18._computeWeights(50, -5);
+  assert(Wneg === null, 'sigma<0 returns null');
+
+  // mu far outside range (beyond 5 sigma): should return null
+  var Wfar = cm18._computeWeights(1000, 1);
+  assert(Wfar === null, 'mu far outside range returns null (5-sigma cutoff)');
+
+  // ============================================================
+  // 19. IMPROVED PORTFOLIO — kernel-weighted expected payout
+  // ============================================================
+  suite('19. Improved portfolio with kernel weighting');
+  var dmPort = new DualMarket();
+  dmPort.init(16, 0, 100, 5000, {}, 3);
+  dmPort.addTrader('Pat', 10000);
+  dmPort.discreteBuy('Pat', 8, 3000);
+
+  var portC = dmPort.getPortfolios('Pat');
+  assert(portC.current.totalHoldings === portC.improved.totalHoldings, 'Holdings identical across engines');
+
+  // For a single concentrated bin buy, WTA expected payout can exceed kernel
+  // (WTA pays 100% at that bin, kernel dilutes via spreading).
+  // Key property: improved expected payout differs from current.
+  assert(!near(portC.improved.expectedPayout, portC.current.expectedPayout, 0.1),
+    'Expected payouts differ: improved=' + portC.improved.expectedPayout.toFixed(2) +
+    ' current=' + portC.current.expectedPayout.toFixed(2));
+
+  // Both peakPayout should be positive
+  assert(portC.current.peakPayout > 0, 'Current peakPayout > 0');
+  assert(portC.improved.peakPayout > 0, 'Improved peakPayout > 0');
+
+  // unrealizedPnL = expectedPayout + received - spent
+  assert(near(portC.current.unrealizedPnL, portC.current.expectedPayout + portC.current.totalReceived - portC.current.totalSpent, 0.01),
+    'Current unrealizedPnL formula correct');
+  assert(near(portC.improved.unrealizedPnL, portC.improved.expectedPayout + portC.improved.totalReceived - portC.improved.totalSpent, 0.01),
+    'Improved unrealizedPnL formula correct');
+
+  // ============================================================
+  // 20. SERIALIZATION ROUNDTRIP
+  // ============================================================
+  suite('20. Serialization roundtrip');
+  var dmSer = new DualMarket();
+  dmSer.init(16, 0, 100, 5000, { tradeFeeBps: 100, lpFeeSharePct: 30, redemptionFeeBps: 50 }, 4);
+  dmSer.addTrader('Ser1', 15000);
+  dmSer.addTrader('Ser2', 10000);
+  dmSer.discreteBuy('Ser1', 5, 3000);
+  dmSer.distributionBuy('Ser2', 60, 12, 5000);
+  dmSer.addLiquidity('Ser1', 2000);
+
+  var json = dmSer.serialize();
+  assert(typeof json === 'string', 'serialize() returns string');
+  assert(json.length > 100, 'Serialized data is substantial');
+
+  var dmLoaded = DualMarket.loadFromSave(json);
+  assert(dmLoaded.initialized, 'Loaded market is initialized');
+  assert(dmLoaded.current.N === 16, 'Loaded N preserved');
+  assert(near(dmLoaded.current.k, dmSer.current.k, 0.001), 'Loaded k matches original');
+  assert(near(dmLoaded.improved.k, dmSer.improved.k, 0.001), 'Loaded improved k matches');
+  assert(dmLoaded.improved.kernelWidth === 4, 'Loaded kernel width preserved');
+
+  // Positions match
+  var posMatch = true;
+  for (var j = 0; j < 16; j++) {
+    if (!near(dmLoaded.current.positions[j], dmSer.current.positions[j], 0.0001)) posMatch = false;
+    if (!near(dmLoaded.improved.positions[j], dmSer.improved.positions[j], 0.0001)) posMatch = false;
+  }
+  assert(posMatch, 'All positions match after load');
+
+  // Trader holdings preserved
+  var loadedHoldings = dmLoaded.current.traderHoldings['Ser1'];
+  var origHoldings = dmSer.current.traderHoldings['Ser1'];
+  assert(loadedHoldings !== undefined, 'Trader holdings exist after load');
+  assert(near(loadedHoldings.spent, origHoldings.spent, 0.01), 'Trader spent preserved');
+  assert(near(loadedHoldings.holdings[5], origHoldings.holdings[5], 0.01), 'Trader bin holdings preserved');
+
+  // LP state preserved
+  var loadedLp = dmLoaded.current.lpProviders['Ser1'];
+  var origLp = dmSer.current.lpProviders['Ser1'];
+  assert(loadedLp !== undefined, 'LP provider exists after load');
+  assert(near(loadedLp.shares, origLp.shares, 0.01), 'LP shares preserved');
+  assert(near(loadedLp.deposited, origLp.deposited, 0.01), 'LP deposited preserved');
+
+  // Traders map preserved
+  assert(dmLoaded.traders['Ser1'] !== undefined, 'Trader wallet state preserved');
+  assert(dmLoaded.traders['Ser2'] !== undefined, 'Second trader wallet preserved');
+
+  // Resolve on loaded and verify it works
+  var rLoaded = dmLoaded.resolve(50);
+  assert(!rLoaded.error, 'Resolve works on loaded market');
+
+  // ============================================================
+  // 21. ERROR CASES
+  // ============================================================
+  suite('21. Error cases');
+  var dmErr = new DualMarket();
+  dmErr.init(8, 0, 100, 1000, {}, 2);
+  dmErr.addTrader('Err', 500);
+
+  // Insufficient balance
+  var errBuy = dmErr.discreteBuy('Err', 3, 1000);
+  assert(errBuy.error !== undefined, 'Buy with insufficient balance returns error');
+
+  // Invalid bin index
+  var errBin = dmErr.discreteBuy('Err', 99, 100);
+  assert(errBin.error !== undefined, 'Invalid bin index returns error');
+
+  var errBinNeg = dmErr.discreteBuy('Err', -1, 100);
+  assert(errBinNeg.error !== undefined, 'Negative bin index returns error');
+
+  // Unknown trader
+  var errUnknown = dmErr.discreteBuy('Nobody', 3, 100);
+  assert(errUnknown.error !== undefined, 'Unknown trader returns error');
+
+  // Sell more tokens than held
+  dmErr.discreteBuy('Err', 3, 100);
+  var errSell = dmErr.discreteSell('Err', 3, 999999);
+  assert(errSell.error !== undefined, 'Sell more than held returns error');
+
+  // Sell from bin with no holdings
+  var errSellEmpty = dmErr.discreteSell('Err', 0, 100);
+  assert(errSellEmpty.error !== undefined, 'Sell from empty bin returns error');
+
+  // Duplicate trader
+  var errDupe = dmErr.addTrader('Err', 1000);
+  assert(errDupe.error !== undefined, 'Duplicate trader returns error');
+
+  // Trade on resolved market
+  dmErr.resolve(50);
+  var errResolved = dmErr.discreteBuy('Err', 3, 100);
+  assert(errResolved.error !== undefined, 'Buy on resolved market returns error');
+
+  var errSellResolved = dmErr.discreteSell('Err', 3, 10);
+  assert(errSellResolved.error !== undefined, 'Sell on resolved market returns error');
+
+  var errAddLpResolved = dmErr.addLiquidity('Err', 100);
+  assert(errAddLpResolved.error !== undefined, 'Add LP on resolved market returns error');
+
+  // Uninitialized market
+  var dmUninit = new DualMarket();
+  var errUninit = dmUninit.discreteBuy('X', 0, 100);
+  assert(errUninit.error !== undefined, 'Trade on uninitialized market returns error');
+
+  // ============================================================
+  // 22. MULTIPLE TRADERS — interaction & fairness
+  // ============================================================
+  suite('22. Multiple traders');
+  var dmMulti = new DualMarket();
+  dmMulti.init(16, 0, 100, 5000, {}, 3);
+  dmMulti.addTrader('M1', 10000);
+  dmMulti.addTrader('M2', 10000);
+  dmMulti.addTrader('M3', 10000);
+
+  // M1 bets on bin 3, M2 on bin 8, M3 on bin 12
+  dmMulti.discreteBuy('M1', 3, 4000);
+  dmMulti.discreteBuy('M2', 8, 4000);
+  dmMulti.discreteBuy('M3', 12, 4000);
+
+  // All should have similar token amounts (same amount, different bins)
+  var th1 = dmMulti.current.traderHoldings['M1'].holdings[3];
+  var th2 = dmMulti.current.traderHoldings['M2'].holdings[8];
+  var th3 = dmMulti.current.traderHoldings['M3'].holdings[12];
+
+  // All three traders bought into different bins for the same amount.
+  // Each gets a positive token amount. The exact amount depends on AMM state at time of trade.
+  assert(th1 > 0 && th2 > 0 && th3 > 0, 'All traders received tokens (th1=' + th1.toFixed(0) + ' th2=' + th2.toFixed(0) + ' th3=' + th3.toFixed(0) + ')');
+
+  // Resolve at bin 8 — M2 should win
+  var rMulti = dmMulti.resolve(53);
+  var m1pay = rMulti.current.payouts.find(function (p) { return p.name === 'M1'; });
+  var m2pay = rMulti.current.payouts.find(function (p) { return p.name === 'M2'; });
+  var m3pay = rMulti.current.payouts.find(function (p) { return p.name === 'M3'; });
+
+  // WTA: only M2 gets trader payout
+  assert(m2pay.payout > m1pay.payout, 'WTA: winner (M2) gets most payout');
+  assert(near(m1pay.grossPayout, 0, 0.01), 'WTA: M1 (wrong bin) gets 0 gross payout');
+  assert(near(m3pay.grossPayout, 0, 0.01), 'WTA: M3 (wrong bin) gets 0 gross payout');
+
+  // Improved: kernel spreads — M1 and M3 may get partial payouts
+  var m1payI = rMulti.improved.payouts.find(function (p) { return p.name === 'M1'; });
+  var m2payI = rMulti.improved.payouts.find(function (p) { return p.name === 'M2'; });
+  assert(m2payI.payout > m1payI.payout, 'Kernel: M2 still gets most');
+
+  // ============================================================
+  // 23. AMM INVARIANT THROUGH COMPLEX SEQUENCES
+  // ============================================================
+  suite('23. AMM invariant through complex sequence');
+  var dmInv = new DualMarket();
+  dmInv.init(32, -50, 50, 10000, { tradeFeeBps: 100, lpFeeSharePct: 25 }, 3);
+  dmInv.addTrader('Inv1', 50000);
+  dmInv.addTrader('Inv2', 50000);
+
+  dmInv.discreteBuy('Inv1', 10, 5000);
+  dmInv.distributionBuy('Inv2', 0, 15, 8000);
+  dmInv.discreteSell('Inv1', 10, 1000);
+  dmInv.addLiquidity('Inv2', 10000);
+  dmInv.distributionBuy('Inv1', -20, 5, 3000);
+  dmInv.discreteBuy('Inv2', 25, 6000);
+  dmInv.removeLiquidity('Inv2', 5000);
+  dmInv.distributionSell('Inv1', -20, 5, 500);
+
+  assert(near(ammInvariant(dmInv.current), dmInv.current.k, 0.1),
+    'Current AMM invariant after complex sequence (inv=' + ammInvariant(dmInv.current).toFixed(2) + ' k=' + dmInv.current.k.toFixed(2) + ')');
+  assert(near(ammInvariant(dmInv.improved), dmInv.improved.k, 0.1),
+    'Improved AMM invariant after complex sequence');
+
+  sync = dmInv.verifySync();
+  assert(sync.synced, 'Engines synced after complex sequence (drift=' + sync.maxPositionDrift.toFixed(6) + ')');
+
+  // Probs still sum to 1
+  assert(near(sumArray(dmInv.current.getProbabilities()), 1, 0.001), 'Probs sum to 1 after complex sequence');
+
+  // ============================================================
+  // 24. LP ADD PRESERVES PROBABILITY DISTRIBUTION
+  // ============================================================
+  suite('24. LP add preserves probabilities');
+  var dmLpProb = new DualMarket();
+  dmLpProb.init(16, 0, 100, 5000, {}, 2);
+  dmLpProb.addTrader('LP2', 10000);
+  dmLpProb.addTrader('T2', 10000);
+
+  // Skew probabilities with a trade
+  dmLpProb.discreteBuy('T2', 5, 3000);
+
+  var probsBefore = dmLpProb.current.getProbabilities().slice();
+  dmLpProb.addLiquidity('LP2', 5000);
+  var probsAfterLP = dmLpProb.current.getProbabilities();
+
+  var probsPreserved = true;
+  for (var j = 0; j < 16; j++) {
+    if (!near(probsBefore[j], probsAfterLP[j], 0.001)) probsPreserved = false;
+  }
+  assert(probsPreserved, 'Adding LP preserves probability distribution');
+
+  // ============================================================
+  // 25. LP REMOVE PRESERVES PROBABILITY DISTRIBUTION
+  // ============================================================
+  suite('25. LP remove preserves probabilities');
+  var probsBeforeRemove = dmLpProb.current.getProbabilities().slice();
+  dmLpProb.removeLiquidity('LP2', 2000);
+  var probsAfterRemove = dmLpProb.current.getProbabilities();
+
+  var probsPreservedRemove = true;
+  for (var j = 0; j < 16; j++) {
+    if (!near(probsBeforeRemove[j], probsAfterRemove[j], 0.001)) probsPreservedRemove = false;
+  }
+  assert(probsPreservedRemove, 'Removing LP preserves probability distribution');
+
+  // ============================================================
+  // 26. DISCRETE BUY COST INCREASES (BONDING CURVE)
+  // ============================================================
+  suite('26. Bonding curve — sequential buys cost more');
+  var dmBC = new DualMarket();
+  dmBC.init(16, 0, 100, 5000, {}, 2);
+  dmBC.addTrader('BC', 100000);
+
+  var buy1 = dmBC.discreteBuy('BC', 5, 1000);
+  var buy2 = dmBC.discreteBuy('BC', 5, 1000);
+  var buy3 = dmBC.discreteBuy('BC', 5, 1000);
+
+  // Each successive buy should yield fewer tokens (price increases)
+  assert(buy1.current.tokensOut > buy2.current.tokensOut, 'Second buy yields fewer tokens');
+  assert(buy2.current.tokensOut > buy3.current.tokensOut, 'Third buy yields even fewer tokens');
+
+  // Effective price per token increases
+  var price1 = 1000 / buy1.current.tokensOut;
+  var price2 = 1000 / buy2.current.tokensOut;
+  var price3 = 1000 / buy3.current.tokensOut;
+  assert(price1 < price2, 'Price increases after buy (p1=' + price1.toFixed(4) + ' < p2=' + price2.toFixed(4) + ')');
+  assert(price2 < price3, 'Price continues increasing (p2=' + price2.toFixed(4) + ' < p3=' + price3.toFixed(4) + ')');
+
+  // ============================================================
+  // 27. SELL RETURNS LESS THAN BUY COST (NO-ARBITRAGE)
+  // ============================================================
+  suite('27. No-arbitrage — sell returns less than buy cost');
+  var dmArb = new DualMarket();
+  dmArb.init(16, 0, 100, 5000, {}, 2);
+  dmArb.addTrader('Arb', 10000);
+
+  var buyArb = dmArb.discreteBuy('Arb', 5, 3000);
+  var sellArb = dmArb.discreteSell('Arb', 5, buyArb.current.tokensOut);
+
+  // With 0 fees and identical token count, AMM is perfectly reversible —
+  // selling exact tokensOut returns exactly the original cost
+  assert(sellArb.current.collateralOut <= 3000 + 0.01,
+    'Sell returns at most buy cost (got ' + sellArb.current.collateralOut.toFixed(2) + ')');
+  assert(sellArb.current.collateralOut > 2999,
+    'Sell returns ~full cost when 0 fees (got ' + sellArb.current.collateralOut.toFixed(2) + ')');
+
+  // With fees, sell returns strictly less
+  var dmArbFee = new DualMarket();
+  dmArbFee.init(16, 0, 100, 5000, { tradeFeeBps: 200 }, 2);
+  dmArbFee.addTrader('ArbF', 10000);
+  var buyArbF = dmArbFee.discreteBuy('ArbF', 5, 3000);
+  var sellArbF = dmArbFee.discreteSell('ArbF', 5, buyArbF.current.tokensOut);
+  assert(sellArbF.current.collateralOut < 3000,
+    'With fees: sell returns less than buy cost (got ' + sellArbF.current.collateralOut.toFixed(2) + ')');
+
+  // ============================================================
+  // 28. LP FEES ACCUMULATE CORRECTLY
+  // ============================================================
+  suite('28. LP fee accumulation');
+  var dmLF = new DualMarket();
+  dmLF.init(8, 0, 100, 5000, { tradeFeeBps: 500, lpFeeSharePct: 100 }, 2);
+  dmLF.addTrader('LF', 50000);
+
+  assert(dmLF.current.accumulatedLpFees === 0, 'LP fees start at 0');
+
+  var buyLF = dmLF.discreteBuy('LF', 3, 10000);
+  // 500 bps = 5% fee, 100% to LP
+  var expectedFee = Math.floor(10000 * 500 / 10000);
+  var expectedLpFee = Math.floor(expectedFee * 100 / 100);
+  assert(buyLF.current.fee === expectedFee, 'Fee = 5% of 10000 = ' + expectedFee);
+  assert(buyLF.current.lpFee === expectedLpFee, 'LP gets 100% of fee');
+  assert(near(dmLF.current.accumulatedLpFees, expectedLpFee), 'Accumulated LP fees = ' + expectedLpFee);
+
+  // Second trade adds more fees
+  var buyLF2 = dmLF.discreteBuy('LF', 5, 5000);
+  var expectedFee2 = Math.floor(5000 * 500 / 10000);
+  assert(near(dmLF.current.accumulatedLpFees, expectedLpFee + Math.floor(expectedFee2 * 100 / 100)),
+    'LP fees accumulate across trades');
+
+  // ============================================================
+  // 29. LP REMOVE — FEES DISTRIBUTED
+  // ============================================================
+  suite('29. LP remove distributes fees');
+  var dmLR = new DualMarket();
+  dmLR.init(8, 0, 100, 5000, { tradeFeeBps: 500, lpFeeSharePct: 100 }, 2);
+  dmLR.addTrader('LR_T', 20000);
+  dmLR.addTrader('LR_LP', 10000);
+
+  // Add second LP
+  dmLR.addLiquidity('LR_LP', 5000);
+
+  // Trade to generate fees
+  dmLR.discreteBuy('LR_T', 3, 10000);
+  var feesBeforeRemove = dmLR.current.accumulatedLpFees;
+  assert(feesBeforeRemove > 0, 'Fees accumulated before LP remove');
+
+  // LR_LP has some share of the pool — remove should include fee share
+  var removeWithFees = dmLR.removeLiquidity('LR_LP', 5000);
+  assert(removeWithFees.current.feeShare > 0, 'Fee share included in LP removal (feeShare=' + removeWithFees.current.feeShare.toFixed(2) + ')');
+  assert(removeWithFees.current.totalPayout > removeWithFees.current.collateralOut,
+    'Total payout > collateral (includes fees)');
+
+  // Accumulated fees should decrease
+  assert(dmLR.current.accumulatedLpFees < feesBeforeRemove, 'Accumulated fees decreased after LP remove');
+
+  // ============================================================
+  // 30. IMPROVED LP PAYOUT CURVE DIFFERS FROM CURRENT
+  // ============================================================
+  suite('30. Improved LP payout curve shape');
+  var dmLPC = new DualMarket();
+  dmLPC.init(16, 0, 100, 5000, {}, 3);
+  dmLPC.addTrader('LPC_T', 10000);
+  dmLPC.discreteBuy('LPC_T', 8, 5000);
+
+  var lpC = dmLPC.current.getLpPortfolio('Creator');
+  var lpI = dmLPC.improved.getLpPortfolio('Creator');
+
+  // Current WTA: LP payout varies sharply — bin 8 (heavy trader) pays LP much less
+  var cMinLP = Math.min.apply(null, lpC.payoutPerOutcome);
+  var cMaxLP = Math.max.apply(null, lpC.payoutPerOutcome);
+  var cRange = cMaxLP - cMinLP;
+
+  // Improved kernel: LP payout should be smoother (less variance across bins)
+  var iMinLP = Math.min.apply(null, lpI.payoutPerOutcome);
+  var iMaxLP = Math.max.apply(null, lpI.payoutPerOutcome);
+  var iRange = iMaxLP - iMinLP;
+
+  // With wider kernel, more bins affect LP payout, generally smoothing the curve.
+  // At minimum the improved curve should not be worse than current.
+  assert(iRange <= cRange + 0.01, 'Improved LP payout range (' + iRange.toFixed(0) + ') <= current (' + cRange.toFixed(0) + ')');
+
+  // The kernel redistributes risk between LP and traders — LP payout curve shape
+  // differs between engines, which is the key property.
+  var lpPayoutsDiffer = false;
+  for (var j = 0; j < 16; j++) {
+    if (!near(lpC.payoutPerOutcome[j], lpI.payoutPerOutcome[j], 1)) { lpPayoutsDiffer = true; break; }
+  }
+  assert(lpPayoutsDiffer, 'LP payout curves differ between engines');
+
+  // ============================================================
+  // 31. SELL ALL RETURNS TO UNIFORM WHEN SOLO TRADER
+  // ============================================================
+  suite('31. Sell all restores uniform probabilities (solo trader)');
+  var dmSA = new DualMarket();
+  dmSA.init(16, 0, 100, 5000, {}, 2);
+  dmSA.addTrader('SA', 20000);
+  dmSA.discreteBuy('SA', 5, 3000);
+  dmSA.distributionBuy('SA', 60, 10, 2000);
+  dmSA.sellAll('SA');
+
+  var probsSA = dmSA.current.getProbabilities();
+  var allUniform = true;
+  for (var j = 0; j < 16; j++) {
+    if (!near(probsSA[j], 1 / 16, 0.001)) allUniform = false;
+  }
+  assert(allUniform, 'Probs return to uniform after sell all (solo trader)');
+
+  // ============================================================
+  // 32. DISTRIBUTION BUY/SELL SYMMETRY
+  // ============================================================
+  suite('32. Distribution buy then sell — net cost is small');
+  var dmDS = new DualMarket();
+  dmDS.init(32, 0, 100, 10000, {}, 3);
+  dmDS.addTrader('DS', 50000);
+
+  var walletBefore = dmDS.getTraderBalance('DS').current;
+  dmDS.distributionBuy('DS', 50, 10, 5000);
+  dmDS.sellAll('DS');
+  var walletAfter = dmDS.getTraderBalance('DS').current;
+
+  // With 0 fees, AMM round-trip returns very close to original (may be exact or tiny rounding)
+  var loss = walletBefore - walletAfter;
+  assert(loss >= -0.01, 'Round-trip does not create money (loss=' + loss.toFixed(4) + ')');
+  assert(loss < 500, 'Round-trip loss is reasonable (loss=' + loss.toFixed(4) + ' of 5000)');
+
+  // With fees, round-trip has meaningful loss
+  var dmDSf = new DualMarket();
+  dmDSf.init(32, 0, 100, 10000, { tradeFeeBps: 200 }, 3);
+  dmDSf.addTrader('DSF', 50000);
+  var wBefore = dmDSf.getTraderBalance('DSF').current;
+  dmDSf.distributionBuy('DSF', 50, 10, 5000);
+  dmDSf.sellAll('DSF');
+  var wAfter = dmDSf.getTraderBalance('DSF').current;
+  assert(wBefore - wAfter > 0, 'Round-trip with fees has loss (' + (wBefore - wAfter).toFixed(2) + ')');
+
+  // ============================================================
+  // 33. UTILITY FUNCTIONS
+  // ============================================================
+  suite('33. Utility functions');
+
+  // formatCompact
+  settings.numberFormat = 'short';
+  settings.decimalPrecision = 1;
+  assert(formatCompact(1500) === '1.5K', 'formatCompact(1500) = "1.5K" (got "' + formatCompact(1500) + '")');
+  assert(formatCompact(2500000) === '2.5M', 'formatCompact(2.5M)');
+  assert(formatCompact(3000000000) === '3.0B', 'formatCompact(3B)');
+  assert(formatCompact(null) === '—', 'formatCompact(null) = "—"');
+  assert(formatCompact(NaN) === '—', 'formatCompact(NaN) = "—"');
+  assert(formatCompact(42) === '42.0', 'formatCompact(42) = "42.0"');
+
+  // formatPct
+  assert(formatPct(0.5) === '50.0%', 'formatPct(0.5) = "50.0%"');
+  assert(formatPct(null) === '—', 'formatPct(null) = "—"');
+
+  // formatPnl
+  assert(formatPnl(100).charAt(0) === '+', 'formatPnl positive has + prefix');
+  assert(formatPnl(-100).charAt(0) === '-', 'formatPnl negative has - prefix');
+
+  // Long format
+  settings.numberFormat = 'long';
+  var longResult = formatCompact(1234567.89);
+  assert(longResult.indexOf(',') !== -1, 'Long format uses commas (got "' + longResult + '")');
+  settings.numberFormat = 'short';
+
+  // near helper itself
+  assert(near(1.005, 1.0, 0.01), 'near() works for close values');
+  assert(!near(1.1, 1.0, 0.01), 'near() rejects distant values');
+
+  // ============================================================
+  // 34. DUAL MARKET WALLET ISOLATION
+  // ============================================================
+  suite('34. Dual market wallet isolation');
+  var dmWI = new DualMarket();
+  dmWI.init(8, 0, 100, 1000, {}, 2);
+  dmWI.addTrader('WI', 10000);
+
+  // After trade, both engine wallets should be identical (same deduction)
+  dmWI.discreteBuy('WI', 3, 2000);
+  var wiB = dmWI.getTraderBalance('WI');
+  assert(near(wiB.current, wiB.improved, 0.001), 'Wallets identical after buy');
+  assert(near(wiB.current, 8000), 'Wallet = 8000 after spending 2000');
+
+  // Sell should also keep in sync
+  dmWI.discreteSell('WI', 3, 500);
+  wiB = dmWI.getTraderBalance('WI');
+  assert(near(wiB.current, wiB.improved, 0.001), 'Wallets identical after sell');
+
+  // ============================================================
+  // 35. NON-ZERO RANGE AND NEGATIVE RANGES
+  // ============================================================
+  suite('35. Non-standard ranges');
+  var dmNeg = new DualMarket();
+  dmNeg.init(10, -100, -50, 5000, {}, 2);
+  assert(dmNeg.current.binWidth === 5, 'binWidth for [-100,-50]/10 = 5');
+  assert(near(dmNeg.current.centers[0], -97.5, 0.01), 'First center = -97.5');
+
+  dmNeg.addTrader('Neg', 10000);
+  var buyNeg = dmNeg.discreteBuy('Neg', 5, 1000);
+  assert(!buyNeg.error, 'Buy succeeds in negative range');
+
+  var rNeg = dmNeg.resolve(-75);
+  assert(rNeg.current.winningBin === 5, 'Resolve -75 in [-100,-50] = bin 5');
+
+  // Large range
+  var dmBig = new DualMarket();
+  dmBig.init(100, 0, 1000000, 10000, {}, 5);
+  dmBig.addTrader('Big', 50000);
+  var buyBig = dmBig.discreteBuy('Big', 50, 5000);
+  assert(!buyBig.error, 'Buy succeeds in large range (0-1M)');
+
+  // ============================================================
+  // SUMMARY
+  // ============================================================
+  var summaryClass = fail > 0 ? 'fail' : 'pass';
+  log('<div class="summary"><span class="' + summaryClass + '">' + pass + ' passed, ' + fail + ' failed</span></div>');
   console.log('\n=== RESULTS: ' + pass + ' passed, ' + fail + ' failed ===');
-  document.body.innerHTML = '<h2>Phase 0 Verification: ' + pass + ' passed, ' + fail + ' failed</h2>' +
-    '<p>Check browser console for details.</p>' +
-    (fail > 0 ? '<p style="color:red">Some tests FAILED!</p>' : '<p style="color:green">All tests PASSED!</p>');
 })();
 </script>
 </body>
