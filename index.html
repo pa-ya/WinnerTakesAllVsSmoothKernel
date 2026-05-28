@@ -540,6 +540,47 @@
         <canvas id="kernelChart"></canvas>
       </div>
     </div>
+
+    <!-- Payout Analysis Chart -->
+    <div class="setup-card" id="payoutAnalysisCard" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <div class="setup-card-title" style="margin-bottom:0;">Payout Analysis</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="chart-mode-group" id="payoutYAxisGroup">
+            <button class="chart-mode-btn active" onclick="setPayoutYAxis('payout',this)">Payout</button>
+            <button class="chart-mode-btn" onclick="setPayoutYAxis('profit',this)">Profit</button>
+            <button class="chart-mode-btn" onclick="setPayoutYAxis('pnl',this)">PnL %</button>
+          </div>
+          <div class="chart-mode-group" id="payoutFilterGroup">
+            <button class="chart-mode-btn" onclick="setPayoutFilter('lp',this)">LP</button>
+            <button class="chart-mode-btn" onclick="setPayoutFilter('trader',this)">Trader</button>
+            <button class="chart-mode-btn active" onclick="setPayoutFilter('both',this)">Both</button>
+          </div>
+          <button class="btn-reset-zoom" onclick="resetZoom('payoutAnalysisCurrentChart');resetZoom('payoutAnalysisImprovedChart');resetZoom('payoutAnalysisCombinedChart')" title="Reset zoom">&#x21BA;</button>
+        </div>
+      </div>
+      <div class="chart-toggles" id="payoutParticipantToggles" style="margin-bottom:8px;flex-wrap:wrap;"></div>
+      <div class="dual-charts" id="payoutAnalysisCharts">
+        <div class="chart-panel panel-current" id="payoutAnalysisPanelCurrent">
+          <div class="chart-panel-header">
+            <span class="chart-panel-title">Current (WTA)</span>
+          </div>
+          <div class="chart-container"><canvas id="payoutAnalysisCurrentChart"></canvas></div>
+        </div>
+        <div class="chart-panel panel-improved" id="payoutAnalysisPanelImproved">
+          <div class="chart-panel-header">
+            <span class="chart-panel-title">Improved (Kernel)</span>
+          </div>
+          <div class="chart-container"><canvas id="payoutAnalysisImprovedChart"></canvas></div>
+        </div>
+        <div class="chart-panel panel-combined" id="payoutAnalysisPanelCombined" style="display:none;">
+          <div class="chart-panel-header">
+            <span class="chart-panel-title">Payout Analysis — Combined</span>
+          </div>
+          <div class="chart-container"><canvas id="payoutAnalysisCombinedChart"></canvas></div>
+        </div>
+      </div>
+    </div>
   </div>
 
 </div><!-- .main-content -->
@@ -594,6 +635,19 @@
   </div>
 </div>
 
+<!-- Input modal -->
+<div class="input-modal-overlay" id="inputModal">
+  <div class="input-modal">
+    <div class="input-modal-title" id="inputModalTitle">Enter Value</div>
+    <div class="input-modal-text" id="inputModalText"></div>
+    <input type="number" class="input-modal-field" id="inputModalField" placeholder="Enter amount...">
+    <div class="btn-group" style="margin-top:16px;justify-content:flex-end;">
+      <button class="btn btn-primary" id="inputModalSubmit">OK</button>
+      <button class="btn btn-outline" onclick="closeInputModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
 
@@ -644,6 +698,10 @@ function switchMainTab(tabId, btn) {
   // Refresh LP tab when switching to it
   if (tabId === 'lp' && typeof refreshLpTab === 'function') {
     setTimeout(function () { refreshLpTab(); }, 60);
+  }
+  // Refresh payout analysis when switching to resolve tab
+  if (tabId === 'resolve' && typeof renderPayoutAnalysisChart === 'function') {
+    setTimeout(function () { renderPayoutAnalysisChart(); }, 60);
   }
   // Trigger chart resize on tab switch
   setTimeout(function () { resizeVisibleCharts(); }, 50);
@@ -736,6 +794,16 @@ function applyChartMode() {
   if (lpPreviewCombined && !isCombined) lpPreviewCombined.style.display = 'none';
   if (lpPreviewCombined && isCombined) lpPreviewCombined.style.display = '';
 
+  // Payout analysis charts
+  var paC = document.getElementById('payoutAnalysisPanelCurrent');
+  var paI = document.getElementById('payoutAnalysisPanelImproved');
+  var paX = document.getElementById('payoutAnalysisPanelCombined');
+  if (paC) paC.style.display = isCombined ? 'none' : '';
+  if (paI) paI.style.display = isCombined ? 'none' : '';
+  if (paX) paX.style.display = isCombined ? '' : 'none';
+  var paCharts = document.getElementById('payoutAnalysisCharts');
+  if (paCharts) paCharts.classList.toggle('combined-mode', isCombined);
+
   // Refresh combined content when switching to combined mode
   if (isCombined && dualMarket && dualMarket.initialized) {
     refreshCombinedDistChart();
@@ -743,10 +811,14 @@ function applyChartMode() {
     var distTraderName = document.getElementById('distTraderSelect').value;
     refreshCombinedDistStats(distTraderName);
     if (typeof refreshLpTab === 'function') refreshLpTab();
+    if (typeof renderPayoutAnalysisChart === 'function') renderPayoutAnalysisChart();
   }
   // Update preview stats for current mode
   if (dualMarket && dualMarket.initialized && typeof updatePreviewStats === 'function') {
     updatePreviewStats();
+  }
+  if (!isCombined && dualMarket && dualMarket.initialized && typeof renderPayoutAnalysisChart === 'function') {
+    renderPayoutAnalysisChart();
   }
 
   setTimeout(function () { resizeVisibleCharts(); }, 50);
@@ -1808,6 +1880,7 @@ function createMarket() {
   document.getElementById('payoutTableWrapper').style.display = 'none';
   document.getElementById('combinedPayoutWrapper').style.display = 'none';
   document.getElementById('kernelVizCard').style.display = 'none';
+  document.getElementById('payoutAnalysisCard').style.display = 'none';
 
   // Hide preview stats
   var ps = document.getElementById('distPreviewStats');
@@ -1870,35 +1943,35 @@ function removeTrader(name) {
 
 function resetTraders() {
   if (traderRegistry.length === 0) return showToast('No traders to reset', 'info');
-  if (!confirm('Reset all traders? This clears the trader list.')) return;
-  traderRegistry = [];
-  saveTraderRegistry();
-  renderTraderList();
-  updateTraderSelectors();
-  showToast('Trader list cleared', 'info');
+  showConfirmModal('Reset Traders', 'This will clear all traders from the list. Continue?', function () {
+    traderRegistry = [];
+    saveTraderRegistry();
+    renderTraderList();
+    updateTraderSelectors();
+    showToast('Trader list cleared', 'info');
+  });
 }
 
 function topUpTrader(name) {
   if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first to top up traders', 'error');
-  var amount = prompt('Top-up amount for ' + name + ':');
-  if (!amount) return;
-  amount = parseFloat(amount);
-  if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
-
-  var t = dualMarket.traders[name];
-  if (!t) return;
-  t.currentWallet += amount;
-  t.improvedWallet += amount;
-  for (var i = 0; i < traderRegistry.length; i++) {
-    if (traderRegistry[i].name === name) {
-      traderRegistry[i].balance += amount;
-      break;
+  showInputModal('Top Up Trader', 'Enter amount for ' + name + ':', '', function (val) {
+    var amount = parseFloat(val);
+    if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
+    var t = dualMarket.traders[name];
+    if (!t) return;
+    t.currentWallet += amount;
+    t.improvedWallet += amount;
+    for (var i = 0; i < traderRegistry.length; i++) {
+      if (traderRegistry[i].name === name) {
+        traderRegistry[i].balance += amount;
+        break;
+      }
     }
-  }
-  saveTraderRegistry();
-  renderTraderList();
-  refreshDistCharts();
-  showToast('Topped up ' + name + ' by $' + formatCompact(amount), 'info');
+    saveTraderRegistry();
+    renderTraderList();
+    refreshDistCharts();
+    showToast('Topped up ' + name + ' by $' + formatCompact(amount), 'info');
+  });
 }
 
 function renderTraderList() {
@@ -2970,25 +3043,24 @@ function topUpLpUser() {
   if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first', 'error');
   var lpName = document.getElementById('lpTraderSelect').value;
   if (!lpName || lpName === '__ALL__') return showToast('Select a specific LP', 'error');
-  var amount = prompt('Top-up amount for ' + lpName + ':');
-  if (!amount) return;
-  amount = parseFloat(amount);
-  if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
-
-  var t = dualMarket.traders[lpName];
-  if (!t) return showToast('Unknown user', 'error');
-  t.currentWallet += amount;
-  t.improvedWallet += amount;
-  for (var i = 0; i < traderRegistry.length; i++) {
-    if (traderRegistry[i].name === lpName) {
-      traderRegistry[i].balance += amount;
-      break;
+  showInputModal('Top Up LP', 'Enter amount for ' + lpName + ':', '', function (val) {
+    var amount = parseFloat(val);
+    if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
+    var t = dualMarket.traders[lpName];
+    if (!t) return showToast('Unknown user', 'error');
+    t.currentWallet += amount;
+    t.improvedWallet += amount;
+    for (var i = 0; i < traderRegistry.length; i++) {
+      if (traderRegistry[i].name === lpName) {
+        traderRegistry[i].balance += amount;
+        break;
+      }
     }
-  }
-  saveTraderRegistry();
-  renderTraderList();
-  refreshLpTab();
-  showToast('Topped up ' + lpName + ' by $' + formatCompact(amount), 'info');
+    saveTraderRegistry();
+    renderTraderList();
+    refreshLpTab();
+    showToast('Topped up ' + lpName + ' by $' + formatCompact(amount), 'info');
+  });
 }
 
 // --- Combined Trader + LP Stats ---
@@ -3266,6 +3338,11 @@ function resolveMarket() {
 
   // Apply winning bin markers on trading charts
   applyResolutionMarkers();
+
+  // Render payout analysis chart
+  renderPayoutAnalysisChart();
+  document.getElementById('payoutAnalysisCard').style.display = '';
+
   applyStatsMode();
 
   var label = dualMarket.current.getLabels()[result.current.winningBin] || result.current.winningBin;
@@ -3628,6 +3705,8 @@ function loadMarketState() {
       document.getElementById('payoutTableWrapper').style.display = '';
       document.getElementById('kernelVizCard').style.display = '';
       applyResolutionMarkers();
+      renderPayoutAnalysisChart();
+      document.getElementById('payoutAnalysisCard').style.display = '';
     }
 
     updateSaveLoadBtn();
@@ -3655,6 +3734,281 @@ function updateSaveLoadBtn() {
     btn.title = marketCreated ? 'Save market state' : 'Create a market first';
     btn.onclick = saveMarketState;
     btn.disabled = !marketCreated;
+  }
+}
+
+// ============================================================
+// INPUT MODAL (replaces native prompt())
+// ============================================================
+function showInputModal(title, text, defaultValue, onSubmit) {
+  document.getElementById('inputModalTitle').textContent = title;
+  var textEl = document.getElementById('inputModalText');
+  if (text) { textEl.textContent = text; textEl.style.display = ''; }
+  else { textEl.style.display = 'none'; }
+  var field = document.getElementById('inputModalField');
+  field.value = defaultValue || '';
+  var submitBtn = document.getElementById('inputModalSubmit');
+  var handler = function () { closeInputModal(); if (onSubmit) onSubmit(field.value); };
+  submitBtn.onclick = handler;
+  field.onkeydown = function (e) { if (e.key === 'Enter') handler(); };
+  document.getElementById('inputModal').classList.add('open');
+  setTimeout(function () { field.focus(); field.select(); }, 50);
+}
+
+function closeInputModal() {
+  document.getElementById('inputModal').classList.remove('open');
+}
+
+document.getElementById('inputModal').addEventListener('click', function (e) {
+  if (e.target === this) closeInputModal();
+});
+
+// ============================================================
+// PAYOUT ANALYSIS CHART
+// ============================================================
+var PARTICIPANT_COLORS = [
+  '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7',
+  '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16',
+];
+
+var payoutAnalysisYAxis = 'payout';
+var payoutAnalysisFilter = 'both';
+var payoutAnalysisHidden = {};
+
+function getPayoutAnalysisParticipants() {
+  if (!dualMarket || !dualMarket.initialized) return [];
+  var participants = [];
+  var seen = {};
+  var fm = payoutAnalysisFilter;
+
+  if (fm === 'trader' || fm === 'both') {
+    for (var name in dualMarket.current.traderHoldings) {
+      var th = dualMarket.current.traderHoldings[name];
+      var has = false;
+      for (var j = 0; j < dualMarket.current.N; j++) {
+        if (th.holdings[j] > 0.01) { has = true; break; }
+      }
+      if (has || th.spent > 0) {
+        participants.push({ name: name, type: 'trader' });
+        seen[name] = true;
+      }
+    }
+  }
+
+  if (fm === 'lp' || fm === 'both') {
+    for (var name in dualMarket.current.lpProviders) {
+      var lp = dualMarket.current.lpProviders[name];
+      if (lp.shares > 0 || lp.deposited > 0) {
+        if (seen[name] && fm === 'both') {
+          for (var i = 0; i < participants.length; i++) {
+            if (participants[i].name === name) { participants[i].type = 'both'; break; }
+          }
+        } else if (!seen[name]) {
+          participants.push({ name: name, type: 'lp' });
+          seen[name] = true;
+        }
+      }
+    }
+  }
+
+  return participants;
+}
+
+function computePayoutAnalysisData(engine, participant) {
+  var N = engine.N;
+  var name = participant.name;
+  var pType = participant.type;
+  var traderPayouts = null, lpPayouts = null;
+  var spent = 0, received = 0;
+
+  if (pType === 'trader' || pType === 'both') {
+    traderPayouts = engine.getTraderPayoutPerOutcome(name);
+    var th = engine.traderHoldings[name];
+    if (th) { spent += th.spent; received += th.received; }
+  }
+
+  if (pType === 'lp' || pType === 'both') {
+    var lpP = engine.getLpPortfolio(name);
+    if (lpP) {
+      lpPayouts = lpP.payoutPerOutcome;
+      spent += lpP.deposited;
+      received += lpP.withdrawn;
+    }
+  }
+
+  var data = [];
+  for (var w = 0; w < N; w++) {
+    var payout = 0;
+    if (traderPayouts) payout += traderPayouts[w];
+    if (lpPayouts) payout += lpPayouts[w];
+    if (payoutAnalysisYAxis === 'payout') {
+      data.push(payout);
+    } else if (payoutAnalysisYAxis === 'profit') {
+      data.push(payout + received - spent);
+    } else {
+      var profit = payout + received - spent;
+      data.push(spent > 0 ? (profit / spent) * 100 : 0);
+    }
+  }
+  return data;
+}
+
+function buildPayoutAnalysisConfig(engine, participants, labels, chartColors, panelType) {
+  var N = engine ? engine.N : dualMarket.current.N;
+  var large = N >= 128;
+  var yTitle = payoutAnalysisYAxis === 'payout' ? 'Payout'
+    : payoutAnalysisYAxis === 'profit' ? 'Profit (Payout + Received − Spent)'
+    : 'PnL (%)';
+  var yTickCb = payoutAnalysisYAxis === 'pnl'
+    ? function (v) { return v.toFixed(1) + '%'; }
+    : function (v) { return formatCompact(v); };
+
+  var datasets = [];
+
+  if (panelType === 'combined') {
+    for (var i = 0; i < participants.length; i++) {
+      var p = participants[i];
+      var color = PARTICIPANT_COLORS[i % PARTICIPANT_COLORS.length];
+      var hidden = !!payoutAnalysisHidden[p.name];
+      var cData = computePayoutAnalysisData(dualMarket.current, p);
+      var iData = computePayoutAnalysisData(dualMarket.improved, p);
+      datasets.push({
+        label: p.name + ' (C)',
+        data: cData, borderColor: color, backgroundColor: color + '18',
+        borderWidth: 2, pointRadius: 0, pointHoverRadius: large ? 0 : 3,
+        fill: false, tension: large ? 0 : 0.3, hidden: hidden,
+        _participantName: p.name,
+      });
+      datasets.push({
+        label: p.name + ' (I)',
+        data: iData, borderColor: color, backgroundColor: color + '18',
+        borderWidth: 2, borderDash: [6, 3], pointRadius: 0, pointHoverRadius: large ? 0 : 3,
+        fill: false, tension: large ? 0 : 0.3, hidden: hidden,
+        _participantName: p.name,
+      });
+    }
+  } else {
+    for (var i = 0; i < participants.length; i++) {
+      var p = participants[i];
+      var color = PARTICIPANT_COLORS[i % PARTICIPANT_COLORS.length];
+      var hidden = !!payoutAnalysisHidden[p.name];
+      var data = computePayoutAnalysisData(engine, p);
+      datasets.push({
+        label: p.name,
+        data: data, borderColor: color, backgroundColor: color + '22',
+        borderWidth: 2, pointRadius: 0, pointHoverRadius: large ? 0 : 3,
+        fill: false, tension: large ? 0 : 0.3, hidden: hidden,
+        _participantName: p.name,
+      });
+    }
+  }
+
+  if (payoutAnalysisYAxis !== 'payout') {
+    var zeroLine = [];
+    for (var j = 0; j < N; j++) zeroLine.push(0);
+    datasets.push({
+      label: 'Break-even', data: zeroLine,
+      borderColor: chartColors.textMuted, borderWidth: 1, borderDash: [4, 4],
+      pointRadius: 0, fill: false, tension: 0, _participantName: '__zero__',
+    });
+  }
+
+  return {
+    type: 'line',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) {
+              if (ctx.dataset._participantName === '__zero__') return null;
+              return ctx.dataset.label + ': ' + (payoutAnalysisYAxis === 'pnl' ? ctx.raw.toFixed(1) + '%' : formatCompact(ctx.raw));
+            },
+          },
+        },
+        zoom: getZoomPluginConfig(),
+      },
+      scales: {
+        x: {
+          ticks: { color: chartColors.textMuted, font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 20 },
+          grid: { color: chartColors.grid },
+        },
+        y: {
+          title: { display: true, text: yTitle, color: chartColors.textMuted, font: { size: 10 } },
+          ticks: { color: chartColors.textMuted, font: { size: 9 }, callback: yTickCb },
+          grid: { color: chartColors.grid },
+        },
+      },
+    },
+  };
+}
+
+function renderPayoutAnalysisChart() {
+  var card = document.getElementById('payoutAnalysisCard');
+  if (!dualMarket || !dualMarket.initialized) { if (card) card.style.display = 'none'; return; }
+
+  var participants = getPayoutAnalysisParticipants();
+  if (participants.length === 0) { if (card) card.style.display = 'none'; return; }
+  if (card) card.style.display = '';
+
+  var labels = dualMarket.current.getLabels();
+  var colors = getChartColors();
+
+  var togglesEl = document.getElementById('payoutParticipantToggles');
+  if (togglesEl) {
+    var th = '';
+    for (var i = 0; i < participants.length; i++) {
+      var p = participants[i];
+      var c = PARTICIPANT_COLORS[i % PARTICIPANT_COLORS.length];
+      var checked = !payoutAnalysisHidden[p.name] ? ' checked' : '';
+      var typeLabel = p.type === 'both' ? ' (T+LP)' : (p.type === 'lp' ? ' (LP)' : '');
+      th += '<label class="chart-toggle"><input type="checkbox"' + checked +
+        ' onchange="togglePayoutParticipant(\'' + p.name.replace(/'/g, "\\'") + '\',this.checked)">' +
+        '<span class="curve-dot" style="background:' + c + '"></span> ' + p.name + typeLabel + '</label>';
+    }
+    togglesEl.innerHTML = th;
+  }
+
+  getOrCreateChart('payoutAnalysisCurrentChart',
+    buildPayoutAnalysisConfig(dualMarket.current, participants, labels, colors, 'current'));
+  getOrCreateChart('payoutAnalysisImprovedChart',
+    buildPayoutAnalysisConfig(dualMarket.improved, participants, labels, colors, 'improved'));
+  getOrCreateChart('payoutAnalysisCombinedChart',
+    buildPayoutAnalysisConfig(null, participants, labels, colors, 'combined'));
+}
+
+function setPayoutYAxis(mode, btn) {
+  payoutAnalysisYAxis = mode;
+  var btns = document.querySelectorAll('#payoutYAxisGroup .chart-mode-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+  if (btn) btn.classList.add('active');
+  renderPayoutAnalysisChart();
+}
+
+function setPayoutFilter(mode, btn) {
+  payoutAnalysisFilter = mode;
+  var btns = document.querySelectorAll('#payoutFilterGroup .chart-mode-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+  if (btn) btn.classList.add('active');
+  renderPayoutAnalysisChart();
+}
+
+function togglePayoutParticipant(name, visible) {
+  if (visible) { delete payoutAnalysisHidden[name]; }
+  else { payoutAnalysisHidden[name] = true; }
+  var ids = ['payoutAnalysisCurrentChart', 'payoutAnalysisImprovedChart', 'payoutAnalysisCombinedChart'];
+  for (var c = 0; c < ids.length; c++) {
+    var chart = charts[ids[c]];
+    if (!chart) continue;
+    for (var i = 0; i < chart.data.datasets.length; i++) {
+      if (chart.data.datasets[i]._participantName === name) {
+        chart.setDatasetVisibility(i, visible);
+      }
+    }
+    chart.update('none');
   }
 }
 

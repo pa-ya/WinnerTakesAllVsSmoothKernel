@@ -140,6 +140,8 @@ function updateAllCharts() {
     // LP charts
     if (typeof initLpPayoutCharts === 'function') initLpPayoutCharts();
     if (typeof refreshLpTab === 'function') refreshLpTab();
+    // Payout analysis chart
+    if (typeof renderPayoutAnalysisChart === 'function') renderPayoutAnalysisChart();
   }
 }
 
@@ -564,6 +566,15 @@ CurrentMarket.prototype.getTraderPortfolio = function (traderName) {
     wallet: gt.wallet, totalSpent: mSpent, totalReceived: mReceived,
     unrealizedPnL: unrealizedPnL, pnlPct: pnlPct,
   };
+};
+
+CurrentMarket.prototype.getTraderPayoutPerOutcome = function (traderName) {
+  var th = this.traderHoldings[traderName];
+  if (!th) return null;
+  var rf = 1 - this.redemptionFeeBps / 10000;
+  var payouts = [];
+  for (var w = 0; w < this.N; w++) payouts.push(th.holdings[w] * rf);
+  return payouts;
 };
 
 // ============================================================
@@ -1008,6 +1019,32 @@ ImprovedMarket.prototype.getTraderPortfolio = function (traderName) {
     wallet: gt.wallet, totalSpent: mSpent, totalReceived: mReceived,
     unrealizedPnL: unrealizedPnL, pnlPct: pnlPct,
   };
+};
+
+ImprovedMarket.prototype.getTraderPayoutPerOutcome = function (traderName) {
+  var th = this.traderHoldings[traderName];
+  if (!th) return null;
+  var KW = this.kernelWidth;
+  var rf = 1 - this.redemptionFeeBps / 10000;
+  var totalHPB = [];
+  for (var i = 0; i < this.N; i++) totalHPB.push(0);
+  for (var n in this.traderHoldings) {
+    var thh = this.traderHoldings[n];
+    for (var i = 0; i < this.N; i++) totalHPB[i] += thh.holdings[i];
+  }
+  var payouts = [];
+  for (var w = 0; w < this.N; w++) {
+    var myClaim = 0, totalClaim = 0;
+    var lo = Math.max(0, w - KW), hi = Math.min(this.N - 1, w + KW);
+    for (var j = lo; j <= hi; j++) {
+      var kw = 1 - Math.abs(j - w) / (KW + 1);
+      myClaim += th.holdings[j] * kw;
+      totalClaim += totalHPB[j] * kw;
+    }
+    var cs = (totalClaim > this.k && totalClaim > 0) ? this.k / totalClaim : 1;
+    payouts.push(myClaim * cs * rf);
+  }
+  return payouts;
 };
 
 // ============================================================
