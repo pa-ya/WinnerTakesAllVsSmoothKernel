@@ -218,6 +218,7 @@
           <div class="btn-group">
             <button class="btn btn-success" onclick="executeDistTrade('buy')">Buy</button>
             <button class="btn btn-danger" onclick="executeDistTrade('sell')">Sell</button>
+            <button class="btn btn-sm btn-outline" onclick="executeSellAll()" style="color:var(--danger);border-color:var(--danger);font-size:0.72rem;">Sell All</button>
           </div>
         </div>
       </div>
@@ -308,6 +309,7 @@
       <div class="toolbar-group">
         <span class="toolbar-label">Active LP</span>
         <select class="toolbar-select" id="lpTraderSelect"></select>
+        <button class="btn btn-sm btn-outline" id="lpTopUpBtn" onclick="topUpLpUser()" style="display:none;font-size:0.72rem;">Top Up</button>
       </div>
       <div class="toolbar-group">
         <span class="toolbar-label">Chart</span>
@@ -504,6 +506,27 @@
           </tr>
         </thead>
         <tbody id="payoutTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Combined LP+Trader summary (shown when a user is both trader and LP) -->
+    <div class="payout-table-wrapper" id="combinedPayoutWrapper" style="display:none;">
+      <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">Combined Trader + LP Summary</div>
+      <table class="payout-table" id="combinedPayoutTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Model</th>
+            <th>Trade Payout</th>
+            <th>LP Payout</th>
+            <th>Total Payout</th>
+            <th>Total Spent</th>
+            <th>Total Received</th>
+            <th>Net P&amp;L</th>
+            <th>P&amp;L %</th>
+          </tr>
+        </thead>
+        <tbody id="combinedPayoutBody"></tbody>
       </table>
     </div>
 
@@ -1106,25 +1129,25 @@ function refreshCombinedDistChart() {
   chart.update('none');
 }
 
-function updateCombinedDistPreview() {
+function updateCombinedDistPreview(cPreviewArg, iPreviewArg) {
   if (!dualMarket || !dualMarket.current) return;
   var chart = charts['distCombinedChart'];
   if (!chart) return;
 
-  var mu = parseFloat(document.getElementById('distMuSlider').value);
-  var sigma = getDistSigma();
-  var amount = parseFloat(document.getElementById('distAmount').value);
-
   var empty = [];
   for (var j = 0; j < dualMarket.current.N; j++) empty.push(0);
 
-  var cPreview = null, iPreview = null;
-  if (sigma && sigma > 0 && amount > 0) {
-    cPreview = computeDistPreview(dualMarket.current, mu, sigma, amount);
-    iPreview = computeDistPreview(dualMarket.improved, mu, sigma, amount);
+  var cPreview = cPreviewArg, iPreview = iPreviewArg;
+  if (cPreview === undefined) {
+    var mu = parseFloat(document.getElementById('distMuSlider').value);
+    var sigma = getDistSigma();
+    var amount = parseFloat(document.getElementById('distAmount').value);
+    if (sigma && sigma > 0 && amount > 0) {
+      cPreview = computeDistPreview(dualMarket.current, mu, sigma, amount);
+      iPreview = computeDistPreview(dualMarket.improved, mu, sigma, amount);
+    }
   }
 
-  // datasets: [cProb, iProb, holdings, cPreview, iPreview, uniform]
   chart.data.datasets[3].data = cPreview || empty;
   chart.data.datasets[4].data = iPreview || empty;
   syncChartYAxes(chart);
@@ -1287,7 +1310,9 @@ function setMuFromChart(mu) {
   var min = dualMarket.current.rangeMin;
   var max = dualMarket.current.rangeMax;
   mu = Math.max(min, Math.min(max, mu));
-  document.getElementById('distMuSlider').value = mu;
+  var sl = document.getElementById('distMuSlider');
+  sl.value = mu;
+  updateSliderFill(sl);
   document.getElementById('distMuInput').value = mu.toFixed(1);
   updateDistLabels();
   schedulePreview();
@@ -1298,11 +1323,15 @@ function setMuConfFromChart(mu, conf) {
   var min = dualMarket.current.rangeMin;
   var max = dualMarket.current.rangeMax;
   mu = Math.max(min, Math.min(max, mu));
-  document.getElementById('distMuSlider').value = mu;
+  var muSl = document.getElementById('distMuSlider');
+  muSl.value = mu;
+  updateSliderFill(muSl);
   document.getElementById('distMuInput').value = mu.toFixed(1);
 
   conf = Math.max(0, Math.min(100, conf));
-  document.getElementById('distConfSlider').value = conf;
+  var confSl = document.getElementById('distConfSlider');
+  confSl.value = conf;
+  updateSliderFill(confSl);
 
   updateDistLabels();
   schedulePreview();
@@ -1511,6 +1540,7 @@ function refreshAllDisplayedStats() {
   if (dualMarket.current.resolved && lastResolveResult) {
     renderResolveSummary(lastResolveResult, dualMarket.current.lastResolveValue);
     renderPayoutTable(lastResolveResult);
+    renderCombinedPayoutTable(lastResolveResult);
   }
   renderTraderList();
   applyStatsMode();
@@ -1776,6 +1806,7 @@ function createMarket() {
   document.getElementById('resolvePrevValue').textContent = '\u2014';
   document.getElementById('resolveSummaryCard').style.display = 'none';
   document.getElementById('payoutTableWrapper').style.display = 'none';
+  document.getElementById('combinedPayoutWrapper').style.display = 'none';
   document.getElementById('kernelVizCard').style.display = 'none';
 
   // Hide preview stats
@@ -1797,6 +1828,7 @@ function createMarket() {
 
   lpChartsInitialized = false;
   updateSaveLoadBtn();
+  initSliderFills();
   showToast('Market created: ' + N + ' bins, range [' + rangeMin + ', ' + rangeMax + '], k=' + formatCompact(liquidity), 'info');
 }
 
@@ -1857,6 +1889,13 @@ function topUpTrader(name) {
   if (!t) return;
   t.currentWallet += amount;
   t.improvedWallet += amount;
+  for (var i = 0; i < traderRegistry.length; i++) {
+    if (traderRegistry[i].name === name) {
+      traderRegistry[i].balance += amount;
+      break;
+    }
+  }
+  saveTraderRegistry();
   renderTraderList();
   refreshDistCharts();
   showToast('Topped up ' + name + ' by $' + formatCompact(amount), 'info');
@@ -1949,10 +1988,33 @@ function updateDistLabels() {
   document.getElementById('distSigmaLabel').textContent = '(' + conf + '%)';
 }
 
-// Debounced preview for large markets (>= 128 bins)
-var _debouncedPreview = debounce(function () { updateDistPreview(); }, 30);
+// Slider filled-track (Webkit/Blink — Firefox handled by ::-moz-range-progress CSS)
+function updateSliderFill(el) {
+  var min = parseFloat(el.min) || 0;
+  var max = parseFloat(el.max) || 100;
+  var val = parseFloat(el.value);
+  if (isNaN(val)) val = min;
+  var pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+  el.style.background = 'linear-gradient(to right, var(--primary) 0%, var(--primary) ' + pct + '%, var(--border) ' + pct + '%, var(--border) 100%)';
+}
+function initSliderFills() {
+  var sliders = document.querySelectorAll('input[type="range"]');
+  for (var i = 0; i < sliders.length; i++) updateSliderFill(sliders[i]);
+}
+document.addEventListener('input', function (e) {
+  if (e.target && e.target.type === 'range') updateSliderFill(e.target);
+});
+
+// Adaptive preview scheduling — rAF for moderate markets, debounce for very large
+var _previewRAF = 0;
+var _debouncedPreview60 = debounce(function () { updateDistPreview(); }, 60);
 function schedulePreview() {
-  if (isLargeMarket()) { _debouncedPreview(); } else { updateDistPreview(); }
+  if (!dualMarket || !dualMarket.current) return;
+  var N = dualMarket.current.N;
+  if (N < 128) { updateDistPreview(); return; }
+  if (N >= 512) { _debouncedPreview60(); return; }
+  if (_previewRAF) cancelAnimationFrame(_previewRAF);
+  _previewRAF = requestAnimationFrame(function () { _previewRAF = 0; updateDistPreview(); });
 }
 
 // Mu slider <-> input sync
@@ -2129,27 +2191,30 @@ function refreshDistCharts() {
   var empty = [];
   for (var e = 0; e < dualMarket.current.N; e++) empty.push(0);
 
-  var cc = charts['distCurrentChart'];
-  if (cc) {
-    cc.data.datasets[0].data = cProbs;
-    cc.data.datasets[1].data = cHoldings;
-    if (cc.data.datasets[2]) cc.data.datasets[2].data = empty.slice();
-    syncChartYAxes(cc);
-    cc.update('none');
-  }
-  var ic = charts['distImprovedChart'];
-  if (ic) {
-    ic.data.datasets[0].data = iProbs;
-    ic.data.datasets[1].data = iHoldings;
-    if (ic.data.datasets[2]) ic.data.datasets[2].data = empty.slice();
-    syncChartYAxes(ic);
-    ic.update('none');
+  if (chartMode === 'combined') {
+    refreshCombinedDistChart();
+  } else {
+    var cc = charts['distCurrentChart'];
+    if (cc) {
+      cc.data.datasets[0].data = cProbs;
+      cc.data.datasets[1].data = cHoldings;
+      if (cc.data.datasets[2]) cc.data.datasets[2].data = empty.slice();
+      syncChartYAxes(cc);
+      cc.update('none');
+    }
+    var ic = charts['distImprovedChart'];
+    if (ic) {
+      ic.data.datasets[0].data = iProbs;
+      ic.data.datasets[1].data = iHoldings;
+      if (ic.data.datasets[2]) ic.data.datasets[2].data = empty.slice();
+      syncChartYAxes(ic);
+      ic.update('none');
+    }
   }
 
   refreshDistStats(traderName);
-  refreshCombinedDistChart();
+  if (chartMode === 'combined') refreshCombinedDistStats(traderName);
   updateDistPreview();
-  refreshCombinedDistStats(traderName);
   applyStatsMode();
 }
 
@@ -2233,45 +2298,52 @@ function updateDistPreview() {
   var empty = [];
   for (var j = 0; j < dualMarket.current.N; j++) empty.push(0);
 
-  var cc = charts['distCurrentChart'];
-  if (cc && cc.data.datasets[2]) {
-    cc.data.datasets[2].data = cPreview || empty;
-    syncChartYAxes(cc);
-    cc.update('none');
-  }
-  var ic = charts['distImprovedChart'];
-  if (ic && ic.data.datasets[2]) {
-    ic.data.datasets[2].data = iPreview || empty;
-    syncChartYAxes(ic);
-    ic.update('none');
+  if (chartMode === 'combined') {
+    var xc = charts['distCombinedChart'];
+    if (xc) {
+      xc.data.datasets[3].data = cPreview || empty;
+      xc.data.datasets[4].data = iPreview || empty;
+      syncChartYAxes(xc);
+      xc.update('none');
+    }
+  } else {
+    var cc = charts['distCurrentChart'];
+    if (cc && cc.data.datasets[2]) {
+      cc.data.datasets[2].data = cPreview || empty;
+      syncChartYAxes(cc);
+      cc.update('none');
+    }
+    var ic = charts['distImprovedChart'];
+    if (ic && ic.data.datasets[2]) {
+      ic.data.datasets[2].data = iPreview || empty;
+      syncChartYAxes(ic);
+      ic.update('none');
+    }
   }
 
-  updateCombinedDistPreview();
-  updatePreviewStats();
+  updatePreviewStats(cPreview, iPreview);
 }
 
 // ============================================================
 // TRADE PREVIEW STATS
 // ============================================================
-function updatePreviewStats() {
+function updatePreviewStats(cPreviewArg, iPreviewArg) {
   if (!dualMarket || !dualMarket.current) return;
-
-  var mu = parseFloat(document.getElementById('distMuSlider').value);
-  var sigma = getDistSigma();
-  var amount = parseFloat(document.getElementById('distAmount').value);
 
   var splitPanel = document.getElementById('distPreviewStats');
   var combinedPanel = document.getElementById('distPreviewCombined');
   var isCombined = chartMode === 'combined';
 
-  if (!sigma || sigma <= 0 || !amount || amount <= 0) {
-    if (splitPanel) splitPanel.style.display = 'none';
-    if (combinedPanel) combinedPanel.style.display = 'none';
-    return;
+  var cPreview = cPreviewArg, iPreview = iPreviewArg;
+  if (cPreview === undefined) {
+    var mu = parseFloat(document.getElementById('distMuSlider').value);
+    var sigma = getDistSigma();
+    var amount = parseFloat(document.getElementById('distAmount').value);
+    if (sigma && sigma > 0 && amount > 0) {
+      cPreview = computeDistPreview(dualMarket.current, mu, sigma, amount);
+      iPreview = computeDistPreview(dualMarket.improved, mu, sigma, amount);
+    }
   }
-
-  var cPreview = computeDistPreview(dualMarket.current, mu, sigma, amount);
-  var iPreview = computeDistPreview(dualMarket.improved, mu, sigma, amount);
 
   if (!cPreview || !iPreview) {
     if (splitPanel) splitPanel.style.display = 'none';
@@ -2279,6 +2351,7 @@ function updatePreviewStats() {
     return;
   }
 
+  var amount = parseFloat(document.getElementById('distAmount').value);
   var labels = dualMarket.current.getLabels();
   var N = dualMarket.current.N;
   var fee = Math.floor(amount * dualMarket.current.tradeFeeBps / 10000);
@@ -2291,13 +2364,17 @@ function updatePreviewStats() {
   }
   var cMaxPayout = cMax * (1 - dualMarket.current.redemptionFeeBps / 10000);
 
-  // Improved (Kernel) stats — find best winning bin for kernel payout
+  // Improved (Kernel) stats — O(N×W) peak search
   var iTotal = 0, iMaxPayout = 0, iPeakBin = 0;
   for (var j = 0; j < N; j++) iTotal += iPreview[j];
+  var KW = dualMarket.improved.kernelWidth;
   for (var w = 0; w < N; w++) {
-    var kernel = dualMarket.improved.getSettlementKernel(w);
     var payoutW = 0;
-    for (var jj = 0; jj < N; jj++) payoutW += iPreview[jj] * kernel[jj];
+    var lo = Math.max(0, w - KW);
+    var hi = Math.min(N - 1, w + KW);
+    for (var jj = lo; jj <= hi; jj++) {
+      payoutW += iPreview[jj] * (1 - Math.abs(jj - w) / (KW + 1));
+    }
     if (payoutW > iMaxPayout) { iMaxPayout = payoutW; iPeakBin = w; }
   }
   iMaxPayout *= (1 - dualMarket.improved.redemptionFeeBps / 10000);
@@ -2420,6 +2497,22 @@ function executeDistTrade(side) {
   renderTraderList();
 }
 
+function executeSellAll() {
+  if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first', 'error');
+  var traderName = document.getElementById('distTraderSelect').value;
+  if (!traderName) return showToast('Select a trader first', 'error');
+
+  var result = dualMarket.sellAll(traderName);
+  if (result.error) return showToast(result.error, 'error');
+  if (result.current && result.current.error) return showToast(result.current.error, 'error');
+
+  showToast(traderName + ' sold all: ' + formatCompact(result.current.tokensReturned) +
+    ' tokens → $' + formatCompact(result.current.collateralOut), 'sell');
+
+  refreshDistCharts();
+  renderTraderList();
+}
+
 // Active trader change -> refresh dist charts
 document.getElementById('distTraderSelect').addEventListener('change', function () {
   refreshDistCharts();
@@ -2434,6 +2527,13 @@ var lpChartsInitialized = false;
 function refreshLpTab() {
   if (!dualMarket || !dualMarket.initialized) return;
   var lpName = document.getElementById('lpTraderSelect').value;
+  var isAll = lpName === '__ALL__';
+  var lpBtns = document.querySelectorAll('#lpControls .btn');
+  for (var bi = 0; bi < lpBtns.length; bi++) lpBtns[bi].disabled = isAll;
+  var lpAmountEl = document.getElementById('lpAmount');
+  if (lpAmountEl) lpAmountEl.disabled = isAll;
+  var topUpBtn = document.getElementById('lpTopUpBtn');
+  if (topUpBtn) topUpBtn.style.display = (isAll ? 'none' : '');
   if (!lpChartsInitialized) initLpPayoutCharts();
   refreshLpPayoutCharts(lpName);
   refreshLpStats(lpName);
@@ -2866,6 +2966,31 @@ function executeLp(action) {
   refreshDistCharts();
 }
 
+function topUpLpUser() {
+  if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first', 'error');
+  var lpName = document.getElementById('lpTraderSelect').value;
+  if (!lpName || lpName === '__ALL__') return showToast('Select a specific LP', 'error');
+  var amount = prompt('Top-up amount for ' + lpName + ':');
+  if (!amount) return;
+  amount = parseFloat(amount);
+  if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
+
+  var t = dualMarket.traders[lpName];
+  if (!t) return showToast('Unknown user', 'error');
+  t.currentWallet += amount;
+  t.improvedWallet += amount;
+  for (var i = 0; i < traderRegistry.length; i++) {
+    if (traderRegistry[i].name === lpName) {
+      traderRegistry[i].balance += amount;
+      break;
+    }
+  }
+  saveTraderRegistry();
+  renderTraderList();
+  refreshLpTab();
+  showToast('Topped up ' + lpName + ' by $' + formatCompact(amount), 'info');
+}
+
 // --- Combined Trader + LP Stats ---
 
 function refreshLpCombinedTraderStats(lpName) {
@@ -3081,10 +3206,6 @@ function runLpSimulation() {
 
 // LP tab event listeners
 document.getElementById('lpTraderSelect').addEventListener('change', function () {
-  var isAll = this.value === '__ALL__';
-  var btns = document.querySelectorAll('#lpControls .btn');
-  for (var i = 0; i < btns.length; i++) btns[i].disabled = isAll;
-  document.getElementById('lpAmount').disabled = isAll;
   refreshLpTab();
 });
 document.getElementById('lpAmount').addEventListener('input', function () {
@@ -3231,6 +3352,92 @@ function renderPayoutTable(result) {
   }
 
   tbody.innerHTML = html;
+  renderCombinedPayoutTable(result);
+}
+
+function renderCombinedPayoutTable(result) {
+  var wrapper = document.getElementById('combinedPayoutWrapper');
+  var tbody = document.getElementById('combinedPayoutBody');
+  if (!wrapper || !tbody) return;
+
+  // Build maps: name -> payout for traders and LPs, per model
+  var cTraders = {}, cLps = {}, iTraders = {}, iLps = {};
+  for (var i = 0; i < result.current.payouts.length; i++) {
+    var p = result.current.payouts[i];
+    if (p.type === 'Trader') cTraders[p.name] = p;
+    else cLps[p.name] = p;
+  }
+  for (var i = 0; i < result.improved.payouts.length; i++) {
+    var p = result.improved.payouts[i];
+    if (p.type === 'Trader') iTraders[p.name] = p;
+    else iLps[p.name] = p;
+  }
+
+  // Find names that appear in both trader and LP
+  var dualNames = [];
+  for (var name in cTraders) {
+    if (cLps[name]) dualNames.push(name);
+  }
+
+  if (dualNames.length === 0) {
+    wrapper.style.display = 'none';
+    return;
+  }
+
+  var html = '';
+  for (var d = 0; d < dualNames.length; d++) {
+    var name = dualNames[d];
+    var ct = cTraders[name], cl = cLps[name];
+    var it = iTraders[name], il = iLps[name];
+
+    // Current model combined row
+    var cTotalPayout = ct.payout + cl.payout;
+    var cTotalSpent = ct.spent + cl.spent;
+    var cTotalReceived = ct.received + cl.received;
+    var cNetPnL = ct.netPnL + cl.netPnL;
+    var cPnlPct = cTotalSpent > 0 ? (cNetPnL / cTotalSpent * 100).toFixed(1) : '0.0';
+    var cPnlClass = cNetPnL >= 0 ? 'pnl-positive' : 'pnl-negative';
+    var cPnlSign = cNetPnL >= 0 ? '+' : '';
+
+    html += '<tr class="row-current">' +
+      '<td style="font-weight:700;color:var(--text-heading);text-align:left;">' + name + '</td>' +
+      '<td>WTA</td>' +
+      '<td>' + formatCompact(ct.payout) + '</td>' +
+      '<td>' + formatCompact(cl.payout) + '</td>' +
+      '<td style="font-weight:700;">' + formatCompact(cTotalPayout) + '</td>' +
+      '<td>' + formatCompact(cTotalSpent) + '</td>' +
+      '<td>' + formatCompact(cTotalReceived) + '</td>' +
+      '<td class="' + cPnlClass + '">' + cPnlSign + formatCompact(cNetPnL) + '</td>' +
+      '<td class="' + cPnlClass + '">' + cPnlSign + cPnlPct + '%</td>' +
+      '</tr>';
+
+    // Improved model combined row
+    if (it && il) {
+      var iTotalPayout = it.payout + il.payout;
+      var iTotalSpent = it.spent + il.spent;
+      var iTotalReceived = it.received + il.received;
+      var iNetPnL = it.netPnL + il.netPnL;
+      var iPnlPct = iTotalSpent > 0 ? (iNetPnL / iTotalSpent * 100).toFixed(1) : '0.0';
+      var iPnlClass = iNetPnL >= 0 ? 'pnl-positive' : 'pnl-negative';
+      var iPnlSign = iNetPnL >= 0 ? '+' : '';
+      var isLast = (d === dualNames.length - 1);
+
+      html += '<tr class="row-improved' + (isLast ? '' : ' row-separator') + '">' +
+        '<td style="font-weight:700;color:var(--text-heading);text-align:left;">' + name + '</td>' +
+        '<td>Kernel</td>' +
+        '<td>' + formatCompact(it.payout) + '</td>' +
+        '<td>' + formatCompact(il.payout) + '</td>' +
+        '<td style="font-weight:700;">' + formatCompact(iTotalPayout) + '</td>' +
+        '<td>' + formatCompact(iTotalSpent) + '</td>' +
+        '<td>' + formatCompact(iTotalReceived) + '</td>' +
+        '<td class="' + iPnlClass + '">' + iPnlSign + formatCompact(iNetPnL) + '</td>' +
+        '<td class="' + iPnlClass + '">' + iPnlSign + iPnlPct + '%</td>' +
+        '</tr>';
+    }
+  }
+
+  tbody.innerHTML = html;
+  wrapper.style.display = '';
 }
 
 // --- Kernel Visualization (P5-4) ---
@@ -3424,6 +3631,7 @@ function loadMarketState() {
     }
 
     updateSaveLoadBtn();
+    initSliderFills();
     showToast('Market loaded (' + cfg.N + ' bins)', 'info');
   } catch (e) {
     showToast('Load failed: ' + e.message, 'error');
@@ -3481,6 +3689,9 @@ function updateSaveLoadBtn() {
 
   // Init Save/Load button
   updateSaveLoadBtn();
+
+  // Init slider fills
+  initSliderFills();
 })();
 </script>
 </body>

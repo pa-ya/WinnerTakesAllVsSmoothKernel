@@ -302,7 +302,6 @@ html.theme-light .navbar {
 }
 
 .control-input[type="range"]:hover {
-  background: var(--border-light);
   box-shadow: 0 0 8px var(--primary-glow);
 }
 
@@ -354,8 +353,10 @@ html.theme-light .navbar {
   border: none;
 }
 
-.control-input[type="range"]:hover::-moz-range-track {
-  background: var(--border-light);
+.control-input[type="range"]::-moz-range-progress {
+  background: linear-gradient(135deg, var(--primary-light), var(--primary));
+  height: 6px;
+  border-radius: 999px;
 }
 
 .control-value {

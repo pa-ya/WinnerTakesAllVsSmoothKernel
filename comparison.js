@@ -436,6 +436,44 @@ CurrentMarket.prototype.distributionSell = function (traderName, mu, sigma, tota
   };
 };
 
+CurrentMarket.prototype.sellAll = function (traderName) {
+  if (this.resolved) return { error: 'Market is resolved' };
+  var gt = globalTraders[traderName];
+  if (!gt) return { error: 'Unknown trader: ' + traderName };
+  this.ensureTrader(traderName);
+  var th = this.traderHoldings[traderName];
+
+  var totalTokens = 0;
+  for (var j = 0; j < this.N; j++) totalTokens += th.holdings[j];
+  if (totalTokens < 0.01) return { error: 'No tokens to sell' };
+
+  var sumSq = 0;
+  for (var j = 0; j < this.N; j++) {
+    var newPos = this.positions[j] - th.holdings[j];
+    sumSq += newPos * newPos;
+  }
+
+  var kNew = Math.sqrt(sumSq);
+  var grossOut = this.k - kNew;
+  var fee = Math.floor(grossOut * this.tradeFeeBps / 10000);
+  var lpFee = Math.floor(fee * this.lpFeeSharePct / 100);
+  var netOut = grossOut - fee;
+
+  for (var j = 0; j < this.N; j++) {
+    this.positions[j] -= th.holdings[j];
+    th.holdings[j] = 0;
+  }
+  this.k = kNew;
+  this.accumulatedLpFees += lpFee;
+  th.received += netOut;
+  gt.wallet += netOut;
+
+  return {
+    collateralOut: netOut, grossOut: grossOut, fee: fee, lpFee: lpFee,
+    tokensReturned: totalTokens,
+  };
+};
+
 CurrentMarket.prototype.resolve = function (value) {
   var bin = Math.floor((value - this.rangeMin) * this.N / (this.rangeMax - this.rangeMin));
   bin = Math.max(0, Math.min(this.N - 1, bin));
@@ -765,13 +803,14 @@ ImprovedMarket.prototype.distributionBuy = function (traderName, mu, sigma, gros
   th.spent += grossCollateral;
   gt.wallet -= grossCollateral;
 
-  // Peak payout: find the winning bin that maximizes kernel-weighted payout
   var peakPayout = 0;
+  var KW = this.kernelWidth;
   for (var w = 0; w < this.N; w++) {
-    var wKernel = this.getSettlementKernel(w);
     var payoutW = 0;
-    for (var jj = 0; jj < this.N; jj++) {
-      payoutW += tokensPerBin[jj] * wKernel[jj];
+    var lo = Math.max(0, w - KW);
+    var hi = Math.min(this.N - 1, w + KW);
+    for (var jj = lo; jj <= hi; jj++) {
+      payoutW += tokensPerBin[jj] * (1 - Math.abs(jj - w) / (KW + 1));
     }
     if (payoutW > peakPayout) { peakPayout = payoutW; peakBin = w; }
   }
@@ -831,6 +870,8 @@ ImprovedMarket.prototype.distributionSell = function (traderName, mu, sigma, tot
     grossOut: grossOut, fee: fee, lpFee: lpFee,
   };
 };
+
+ImprovedMarket.prototype.sellAll = CurrentMarket.prototype.sellAll;
 
 ImprovedMarket.prototype.resolve = function (value) {
   var bin = Math.floor((value - this.rangeMin) * this.N / (this.rangeMax - this.rangeMin));
@@ -939,24 +980,17 @@ ImprovedMarket.prototype.getTraderPortfolio = function (traderName) {
   var totalHoldings = 0;
   var peakBin = 0;
 
-  // For each possible winning bin, compute kernel-weighted payout
-  for (var winBin = 0; winBin < this.N; winBin++) {
-    var kernel = this.getSettlementKernel(winBin);
-    var payoutIfWin = 0;
-    for (var j = 0; j < this.N; j++) {
-      payoutIfWin += th.holdings[j] * kernel[j];
-    }
-    expectedPayout += probs[winBin] * payoutIfWin * (1 - this.redemptionFeeBps / 10000);
-  }
-
-  // Find best-case winning bin
+  var KW = this.kernelWidth;
+  var redemptionFactor = 1 - this.redemptionFeeBps / 10000;
   var peakPayout = 0;
   for (var w = 0; w < this.N; w++) {
-    var kernel = this.getSettlementKernel(w);
     var payoutIfW = 0;
-    for (var j = 0; j < this.N; j++) {
-      payoutIfW += th.holdings[j] * kernel[j];
+    var lo = Math.max(0, w - KW);
+    var hi = Math.min(this.N - 1, w + KW);
+    for (var j = lo; j <= hi; j++) {
+      payoutIfW += th.holdings[j] * (1 - Math.abs(j - w) / (KW + 1));
     }
+    expectedPayout += probs[w] * payoutIfW * redemptionFactor;
     if (payoutIfW > peakPayout) { peakPayout = payoutIfW; peakBin = w; }
   }
   peakPayout *= (1 - this.redemptionFeeBps / 10000);
@@ -1102,13 +1136,21 @@ ImprovedMarket.prototype.getLpPortfolio = function (lpName) {
   var currentValue = this.k * poolFraction + feeEarnings;
   var unrealizedPnL = currentValue + lp.withdrawn - lp.deposited;
 
+  var totalHoldingsPerBin = [];
+  for (var i = 0; i < this.N; i++) totalHoldingsPerBin.push(0);
+  for (var name in this.traderHoldings) {
+    var thh = this.traderHoldings[name];
+    for (var i = 0; i < this.N; i++) totalHoldingsPerBin[i] += thh.holdings[i];
+  }
+
+  var KW = this.kernelWidth;
   var payoutPerOutcome = [];
   for (var bin = 0; bin < this.N; bin++) {
-    var kernel = this.getSettlementKernel(bin);
     var totalKernelClaim = 0;
-    for (var name in this.traderHoldings) {
-      var th = this.traderHoldings[name];
-      for (var i = 0; i < this.N; i++) totalKernelClaim += th.holdings[i] * kernel[i];
+    var lo = Math.max(0, bin - KW);
+    var hi = Math.min(this.N - 1, bin + KW);
+    for (var i = lo; i <= hi; i++) {
+      totalKernelClaim += totalHoldingsPerBin[i] * (1 - Math.abs(i - bin) / (KW + 1));
     }
     var claimScale = (totalKernelClaim > this.k && totalKernelClaim > 0) ? this.k / totalKernelClaim : 1;
     var lpResidual = this.k - totalKernelClaim * claimScale;
@@ -1135,13 +1177,21 @@ ImprovedMarket.prototype.getAllLpPortfolio = function () {
   var currentValue = this.k + feeEarnings;
   var unrealizedPnL = currentValue + totalWithdrawn - totalDeposited;
 
+  var totalHoldingsPerBin = [];
+  for (var i = 0; i < this.N; i++) totalHoldingsPerBin.push(0);
+  for (var n in this.traderHoldings) {
+    var thh = this.traderHoldings[n];
+    for (var i = 0; i < this.N; i++) totalHoldingsPerBin[i] += thh.holdings[i];
+  }
+
+  var KW = this.kernelWidth;
   var payoutPerOutcome = [];
   for (var bin = 0; bin < this.N; bin++) {
-    var kernel = this.getSettlementKernel(bin);
     var totalKernelClaim = 0;
-    for (var n in this.traderHoldings) {
-      var th = this.traderHoldings[n];
-      for (var i = 0; i < this.N; i++) totalKernelClaim += th.holdings[i] * kernel[i];
+    var lo = Math.max(0, bin - KW);
+    var hi = Math.min(this.N - 1, bin + KW);
+    for (var i = lo; i <= hi; i++) {
+      totalKernelClaim += totalHoldingsPerBin[i] * (1 - Math.abs(i - bin) / (KW + 1));
     }
     var claimScale = (totalKernelClaim > this.k && totalKernelClaim > 0) ? this.k / totalKernelClaim : 1;
     var lpResidual = this.k - totalKernelClaim * claimScale;
@@ -1273,6 +1323,24 @@ DualMarket.prototype.distributionBuy = function (traderName, mu, sigma, amount) 
 
 DualMarket.prototype.distributionSell = function (traderName, mu, sigma, amount) {
   return this._dualTrade('distributionSell', traderName, [mu, sigma, amount]);
+};
+
+DualMarket.prototype.sellAll = function (traderName) {
+  if (!this.initialized) return { error: 'Market not initialized' };
+  if (!this.traders[traderName]) return { error: 'Unknown trader: ' + traderName };
+
+  this._setWallets(traderName, 'current');
+  var currentResult = this.current.sellAll(traderName);
+  if (currentResult.error) {
+    return { error: currentResult.error, current: currentResult, improved: null };
+  }
+  this._saveWallet(traderName, 'current');
+
+  this._setWallets(traderName, 'improved');
+  var improvedResult = this.improved.sellAll(traderName);
+  this._saveWallet(traderName, 'improved');
+
+  return { current: currentResult, improved: improvedResult };
 };
 
 DualMarket.prototype.resolve = function (value) {
