@@ -107,6 +107,7 @@ function getChartColors() {
     danger: s.getPropertyValue('--danger').trim() || '#ef4444',
     purple: s.getPropertyValue('--purple').trim() || '#a855f7',
     bg: s.getPropertyValue('--bg-secondary').trim() || '#1e293b',
+    grid: currentTheme === 'dark' ? 'rgba(148,163,184,0.18)' : 'rgba(100,116,139,0.12)',
   };
 }
 
@@ -1355,6 +1356,56 @@ DualMarket.prototype.removeLiquidity = function (lpName, amount) {
   this._saveWallet(lpName, 'improved');
 
   return { current: currentResult, improved: improvedResult };
+};
+
+// --- Serialization (Save/Load) ---
+CurrentMarket.prototype.getState = function () {
+  return {
+    k: this.k, positions: this.positions.slice(),
+    totalLpShares: this.totalLpShares,
+    lpProviders: JSON.parse(JSON.stringify(this.lpProviders)),
+    accumulatedLpFees: this.accumulatedLpFees,
+    traderHoldings: JSON.parse(JSON.stringify(this.traderHoldings)),
+    resolved: this.resolved, winningBin: this.winningBin,
+    lastResolveValue: this.lastResolveValue,
+    lastResolvePayouts: this.lastResolvePayouts,
+  };
+};
+
+CurrentMarket.prototype.loadState = function (s) {
+  this.k = s.k;
+  this.positions = s.positions.slice();
+  this.totalLpShares = s.totalLpShares;
+  this.lpProviders = JSON.parse(JSON.stringify(s.lpProviders));
+  this.accumulatedLpFees = s.accumulatedLpFees;
+  this.traderHoldings = JSON.parse(JSON.stringify(s.traderHoldings));
+  this.resolved = s.resolved;
+  this.winningBin = s.winningBin;
+  this.lastResolveValue = s.lastResolveValue;
+  this.lastResolvePayouts = s.lastResolvePayouts;
+};
+
+ImprovedMarket.prototype.getState = CurrentMarket.prototype.getState;
+ImprovedMarket.prototype.loadState = CurrentMarket.prototype.loadState;
+
+DualMarket.prototype.serialize = function () {
+  return JSON.stringify({
+    initConfig: this.initConfig,
+    traders: this.traders,
+    current: this.current.getState(),
+    improved: this.improved.getState(),
+  });
+};
+
+DualMarket.loadFromSave = function (json) {
+  var d = typeof json === 'string' ? JSON.parse(json) : json;
+  var c = d.initConfig;
+  var dm = new DualMarket();
+  dm.init(c.N, c.rangeMin, c.rangeMax, c.liquidity, c.fees, c.kernelWidth);
+  dm.current.loadState(d.current);
+  dm.improved.loadState(d.improved);
+  dm.traders = d.traders;
+  return dm;
 };
 
 DualMarket.prototype.getLpPortfolios = function (lpName) {
