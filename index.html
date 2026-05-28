@@ -56,6 +56,7 @@
   <div class="tabs" id="mainTabs">
     <button class="tab active" onclick="switchMainTab('setup', this)">Setup</button>
     <button class="tab" onclick="switchMainTab('distribution', this)" id="tabDistribution" disabled>Trading</button>
+    <button class="tab" onclick="switchMainTab('lp', this)" id="tabLp" disabled>Liquidity</button>
     <button class="tab" onclick="switchMainTab('resolve', this)" id="tabResolve" disabled>Resolve</button>
   </div>
 
@@ -291,6 +292,158 @@
   </div>
 
   <!-- ============================================================
+       LIQUIDITY TAB
+       ============================================================ -->
+  <div class="tab-content" id="tab-lp">
+    <div class="playground-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">Active LP</span>
+        <select class="toolbar-select" id="lpTraderSelect"></select>
+      </div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">Chart</span>
+        <div class="chart-mode-group">
+          <button class="chart-mode-btn active" onclick="setChartMode('split', this)">Split</button>
+          <button class="chart-mode-btn" onclick="setChartMode('combined', this)">Combined</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LP Controls -->
+    <div class="trade-controls" id="lpControls">
+      <div class="trade-controls-row">
+        <div class="control-group" style="flex:2;min-width:180px;">
+          <label class="control-label">Amount (collateral)</label>
+          <input type="number" class="control-input" id="lpAmount" value="5000" min="1">
+        </div>
+        <div class="control-group" style="flex:0 0 auto;">
+          <label class="control-label">&nbsp;</label>
+          <div class="btn-group">
+            <button class="btn btn-success" onclick="executeLp('add')">Add LP</button>
+            <button class="btn btn-danger" onclick="executeLp('remove')">Remove LP</button>
+            <button class="btn btn-outline" onclick="executeLp('removeAll')" style="border:1px solid var(--border);">All</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LP Preview Stats -->
+    <div class="dual-stats" id="lpPreviewStats">
+      <div class="stats-panel" style="border-top: 2px solid var(--purple);">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">LP Preview — Current (WTA)</div>
+        <div class="result-grid" id="lpPreviewCurrentGrid"></div>
+      </div>
+      <div class="stats-panel" style="border-top: 2px solid var(--purple);">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">LP Preview — Improved (Kernel)</div>
+        <div class="result-grid" id="lpPreviewImprovedGrid"></div>
+      </div>
+    </div>
+    <div class="stats-panel" id="lpPreviewCombined" style="display:none;border-top:2px solid var(--purple);margin-bottom:16px;">
+      <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">LP Preview</div>
+      <table class="comparison-table" id="lpPreviewComparisonTable"></table>
+    </div>
+
+    <!-- LP Payout vs Resolution Outcome Charts -->
+    <div class="collapsible-title open" onclick="toggleCollapsible(this)">LP Payout vs Resolution Outcome</div>
+    <div class="collapsible-body open">
+      <div class="dual-charts" id="lpPayoutCharts">
+        <div class="chart-panel panel-current" id="lpPayoutPanelCurrent">
+          <div class="chart-panel-header">
+            <span class="chart-panel-title">Current (WTA) — LP Payout</span>
+            <button class="btn-reset-zoom" onclick="resetZoom('lpPayoutCurrentChart')" title="Reset zoom">&#x21BA;</button>
+          </div>
+          <div class="chart-container"><canvas id="lpPayoutCurrentChart"></canvas></div>
+        </div>
+        <div class="chart-panel panel-improved" id="lpPayoutPanelImproved">
+          <div class="chart-panel-header">
+            <span class="chart-panel-title">Improved (Kernel) — LP Payout</span>
+            <button class="btn-reset-zoom" onclick="resetZoom('lpPayoutImprovedChart')" title="Reset zoom">&#x21BA;</button>
+          </div>
+          <div class="chart-container"><canvas id="lpPayoutImprovedChart"></canvas></div>
+        </div>
+        <div class="chart-panel panel-combined" id="lpPayoutPanelCombined" style="display:none;">
+          <div class="chart-panel-header">
+            <span class="chart-panel-title">LP Payout Comparison</span>
+            <button class="btn-reset-zoom" onclick="resetZoom('lpPayoutCombinedChart')" title="Reset zoom">&#x21BA;</button>
+          </div>
+          <div class="chart-container"><canvas id="lpPayoutCombinedChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LP Position Stats -->
+    <div class="dual-stats" id="lpStats">
+      <div class="stats-panel">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--primary-light);margin-bottom:8px;">LP Position — Current (WTA)</div>
+        <div class="result-grid" id="lpStatsCurrentGrid"></div>
+      </div>
+      <div class="stats-panel">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);margin-bottom:8px;">LP Position — Improved (Kernel)</div>
+        <div class="result-grid" id="lpStatsImprovedGrid"></div>
+      </div>
+    </div>
+    <div class="stats-panel" id="lpStatsCombined" style="display:none;">
+      <table class="comparison-table" id="lpComparisonTable"></table>
+    </div>
+
+    <!-- Combined Trader + LP Stats -->
+    <div class="collapsible-title" onclick="toggleCollapsible(this)">Combined Trader + LP Stats</div>
+    <div class="collapsible-body">
+      <div class="dual-stats" id="lpCombinedTraderStats">
+        <div class="stats-panel">
+          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--primary-light);margin-bottom:8px;">Total Position — Current</div>
+          <div class="result-grid" id="lpCombinedCurrentGrid"></div>
+        </div>
+        <div class="stats-panel">
+          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);margin-bottom:8px;">Total Position — Improved</div>
+          <div class="result-grid" id="lpCombinedImprovedGrid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LP Impact Simulation -->
+    <div class="collapsible-title" onclick="toggleCollapsible(this)">LP Impact Simulation</div>
+    <div class="collapsible-body">
+      <div class="trade-controls">
+        <div class="trade-controls-row">
+          <div class="control-group" style="flex:2;min-width:160px;">
+            <label class="control-label">Traders <span id="lpSimTraderCountLabel">(20)</span></label>
+            <input type="range" class="control-input" id="lpSimTraderCount" min="1" max="100" value="20">
+          </div>
+          <div class="control-group" style="flex:2;min-width:160px;">
+            <label class="control-label">Avg Trade Size <span id="lpSimTradeSizeLabel">(5000)</span></label>
+            <input type="range" class="control-input" id="lpSimTradeSize" min="100" max="50000" value="5000" step="100">
+          </div>
+          <div class="control-group" style="flex:0 0 auto;">
+            <label class="control-label">&nbsp;</label>
+            <button class="btn btn-primary" onclick="runLpSimulation()">Simulate</button>
+          </div>
+        </div>
+      </div>
+      <div class="dual-charts" id="lpSimCharts">
+        <div class="chart-panel panel-current" id="lpSimPanelCurrent">
+          <div class="chart-panel-header">
+            <span class="chart-panel-title">Current — LP E[PnL] vs Trader Count</span>
+          </div>
+          <div class="chart-container"><canvas id="lpSimCurrentChart"></canvas></div>
+        </div>
+        <div class="chart-panel panel-improved" id="lpSimPanelImproved">
+          <div class="chart-panel-header">
+            <span class="chart-panel-title">Improved — LP E[PnL] vs Trader Count</span>
+          </div>
+          <div class="chart-container"><canvas id="lpSimImprovedChart"></canvas></div>
+        </div>
+        <div class="chart-panel panel-combined" id="lpSimPanelCombined" style="display:none;">
+          <div class="chart-panel-header">
+            <span class="chart-panel-title">LP E[PnL] Comparison</span>
+          </div>
+          <div class="chart-container"><canvas id="lpSimCombinedChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
        RESOLVE TAB
        ============================================================ -->
   <div class="tab-content" id="tab-resolve">
@@ -441,12 +594,17 @@ function switchMainTab(tabId, btn) {
   btn.classList.add('active');
   var el = document.getElementById('tab-' + tabId);
   if (el) el.classList.add('active');
+  // Refresh LP tab when switching to it
+  if (tabId === 'lp' && typeof refreshLpTab === 'function') {
+    setTimeout(function () { refreshLpTab(); }, 60);
+  }
   // Trigger chart resize on tab switch
   setTimeout(function () { resizeVisibleCharts(); }, 50);
 }
 
 function enableTradingTabs() {
   document.getElementById('tabDistribution').disabled = false;
+  document.getElementById('tabLp').disabled = false;
   document.getElementById('tabResolve').disabled = false;
 }
 
@@ -497,12 +655,47 @@ function applyChartMode() {
   if (previewSplit && isCombined) previewSplit.style.display = 'none';
   if (previewCombined && !isCombined) previewCombined.style.display = 'none';
 
+  // LP tab payout charts
+  var lpPayC = document.getElementById('lpPayoutPanelCurrent');
+  var lpPayI = document.getElementById('lpPayoutPanelImproved');
+  var lpPayX = document.getElementById('lpPayoutPanelCombined');
+  if (lpPayC) lpPayC.style.display = isCombined ? 'none' : '';
+  if (lpPayI) lpPayI.style.display = isCombined ? 'none' : '';
+  if (lpPayX) lpPayX.style.display = isCombined ? '' : 'none';
+  var lpPayCharts = document.getElementById('lpPayoutCharts');
+  if (lpPayCharts) lpPayCharts.classList.toggle('combined-mode', isCombined);
+
+  // LP tab sim charts
+  var lpSimC = document.getElementById('lpSimPanelCurrent');
+  var lpSimI = document.getElementById('lpSimPanelImproved');
+  var lpSimX = document.getElementById('lpSimPanelCombined');
+  if (lpSimC) lpSimC.style.display = isCombined ? 'none' : '';
+  if (lpSimI) lpSimI.style.display = isCombined ? 'none' : '';
+  if (lpSimX) lpSimX.style.display = isCombined ? '' : 'none';
+  var lpSimCharts = document.getElementById('lpSimCharts');
+  if (lpSimCharts) lpSimCharts.classList.toggle('combined-mode', isCombined);
+
+  // LP tab stats
+  var lpStatsEl = document.getElementById('lpStats');
+  var lpStatsCombined = document.getElementById('lpStatsCombined');
+  if (lpStatsEl) lpStatsEl.style.display = isCombined ? 'none' : '';
+  if (lpStatsCombined) lpStatsCombined.style.display = isCombined ? '' : 'none';
+
+  // LP tab preview
+  var lpPreviewSplit = document.getElementById('lpPreviewStats');
+  var lpPreviewCombined = document.getElementById('lpPreviewCombined');
+  if (lpPreviewSplit && isCombined) lpPreviewSplit.style.display = 'none';
+  if (lpPreviewSplit && !isCombined) lpPreviewSplit.style.display = '';
+  if (lpPreviewCombined && !isCombined) lpPreviewCombined.style.display = 'none';
+  if (lpPreviewCombined && isCombined) lpPreviewCombined.style.display = '';
+
   // Refresh combined content when switching to combined mode
   if (isCombined && dualMarket && dualMarket.initialized) {
     refreshCombinedDistChart();
     updateCombinedDistPreview();
     var distTraderName = document.getElementById('distTraderSelect').value;
     refreshCombinedDistStats(distTraderName);
+    if (typeof refreshLpTab === 'function') refreshLpTab();
   }
   // Update preview stats for current mode
   if (dualMarket && dualMarket.initialized && typeof updatePreviewStats === 'function') {
@@ -1469,6 +1662,7 @@ function updateTraderSelectors() {
   var names = traderRegistry.map(function (t) { return t.name; });
   var selectors = [
     document.getElementById('distTraderSelect'),
+    document.getElementById('lpTraderSelect'),
   ];
   for (var s = 0; s < selectors.length; s++) {
     var sel = selectors[s];
@@ -1981,6 +2175,654 @@ function executeDistTrade(side) {
 // Active trader change -> refresh dist charts
 document.getElementById('distTraderSelect').addEventListener('change', function () {
   refreshDistCharts();
+});
+
+// ============================================================
+// LP TAB
+// ============================================================
+
+var lpChartsInitialized = false;
+
+function refreshLpTab() {
+  if (!dualMarket || !dualMarket.initialized) return;
+  var lpName = document.getElementById('lpTraderSelect').value;
+  if (!lpChartsInitialized) initLpPayoutCharts();
+  refreshLpPayoutCharts(lpName);
+  refreshLpStats(lpName);
+  refreshLpCombinedTraderStats(lpName);
+  updateLpPreview();
+  if (chartMode === 'combined') refreshLpCombinedStats(lpName);
+}
+
+// --- LP Payout Chart: shows LP payout at each resolution outcome ---
+
+function buildLpPayoutChartConfig(labels, payoutData, depositedLine, engine) {
+  var colors = getChartColors();
+  var lineColor = engine === 'current' ? colors.primary : colors.accent;
+  return {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'LP Payout',
+          data: payoutData,
+          borderColor: lineColor,
+          backgroundColor: lineColor + '22',
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.1,
+        },
+        {
+          label: 'Break-even',
+          data: depositedLine,
+          borderColor: colors.muted,
+          borderDash: [6, 3],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) { return ctx.dataset.label + ': ' + formatCompact(ctx.parsed.y); },
+          },
+        },
+        zoom: getZoomPluginConfig(),
+      },
+      scales: {
+        x: {
+          ticks: { color: colors.text, maxRotation: 0, autoSkip: true, maxTicksLimit: 12, font: { size: 9 } },
+          grid: { color: colors.grid },
+        },
+        y: {
+          ticks: { color: colors.text, font: { size: 9 }, callback: function (v) { return formatCompact(v); } },
+          grid: { color: colors.grid },
+        },
+      },
+    },
+  };
+}
+
+function buildLpPayoutCombinedConfig(labels, cPayout, iPayout, depositedLine) {
+  var colors = getChartColors();
+  return {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Current LP Payout',
+          data: cPayout,
+          borderColor: colors.primary,
+          backgroundColor: colors.primary + '18',
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.1,
+        },
+        {
+          label: 'Improved LP Payout',
+          data: iPayout,
+          borderColor: colors.accent,
+          backgroundColor: colors.accent + '18',
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.1,
+        },
+        {
+          label: 'Break-even',
+          data: depositedLine,
+          borderColor: colors.muted,
+          borderDash: [6, 3],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: colors.text, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) { return ctx.dataset.label + ': ' + formatCompact(ctx.parsed.y); },
+          },
+        },
+        zoom: getZoomPluginConfig(),
+      },
+      scales: {
+        x: {
+          ticks: { color: colors.text, maxRotation: 0, autoSkip: true, maxTicksLimit: 12, font: { size: 9 } },
+          grid: { color: colors.grid },
+        },
+        y: {
+          ticks: { color: colors.text, font: { size: 9 }, callback: function (v) { return formatCompact(v); } },
+          grid: { color: colors.grid },
+        },
+      },
+    },
+  };
+}
+
+function initLpPayoutCharts() {
+  if (!dualMarket || !dualMarket.current) return;
+  var labels = dualMarket.current.getLabels();
+  var N = dualMarket.current.N;
+  var empty = [];
+  var deposited = [];
+  var dep = dualMarket.current.lpProviders['Creator'] ? dualMarket.current.lpProviders['Creator'].deposited : dualMarket.initConfig.liquidity;
+  for (var j = 0; j < N; j++) { empty.push(dep); deposited.push(dep); }
+
+  getOrCreateChart('lpPayoutCurrentChart', buildLpPayoutChartConfig(labels, deposited.slice(), deposited.slice(), 'current'));
+  getOrCreateChart('lpPayoutImprovedChart', buildLpPayoutChartConfig(labels, deposited.slice(), deposited.slice(), 'improved'));
+  getOrCreateChart('lpPayoutCombinedChart', buildLpPayoutCombinedConfig(labels, deposited.slice(), deposited.slice(), deposited.slice()));
+  lpChartsInitialized = true;
+}
+
+function refreshLpPayoutCharts(lpName) {
+  if (!dualMarket || !dualMarket.initialized) return;
+  var N = dualMarket.current.N;
+
+  var cLp = lpName ? dualMarket.current.getLpPortfolio(lpName) : null;
+  var iLp = lpName ? dualMarket.improved.getLpPortfolio(lpName) : null;
+
+  var cPayout = [], iPayout = [], deposited = [];
+  var dep = cLp ? cLp.deposited - cLp.withdrawn : dualMarket.initConfig.liquidity;
+  for (var j = 0; j < N; j++) {
+    cPayout.push(cLp ? cLp.payoutPerOutcome[j] : 0);
+    iPayout.push(iLp ? iLp.payoutPerOutcome[j] : 0);
+    deposited.push(dep);
+  }
+
+  var cc = charts['lpPayoutCurrentChart'];
+  if (cc) {
+    cc.data.datasets[0].data = cPayout;
+    cc.data.datasets[1].data = deposited;
+    cc.update('none');
+  }
+  var ic = charts['lpPayoutImprovedChart'];
+  if (ic) {
+    ic.data.datasets[0].data = iPayout;
+    ic.data.datasets[1].data = deposited;
+    ic.update('none');
+  }
+  var xc = charts['lpPayoutCombinedChart'];
+  if (xc) {
+    xc.data.datasets[0].data = cPayout;
+    xc.data.datasets[1].data = iPayout;
+    xc.data.datasets[2].data = deposited;
+    xc.update('none');
+  }
+}
+
+// --- LP Stats ---
+
+function lpStatsHtml(lp, engine) {
+  if (!lp) return '<div class="result-item"><div class="result-label">No LP position</div><div class="result-value">—</div></div>';
+  var pnlClass = lp.unrealizedPnL >= 0 ? 'positive' : 'negative';
+  var valueClass = lp.currentValue >= lp.deposited ? 'positive' : 'negative';
+  return '' +
+    '<div class="result-item"><div class="result-label">Shares</div><div class="result-value">' + formatCompact(lp.shares) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Pool %</div><div class="result-value">' + (lp.poolFraction * 100).toFixed(1) + '%</div></div>' +
+    '<div class="result-item"><div class="result-label">Deposited</div><div class="result-value" style="color:var(--danger)">' + formatCompact(lp.deposited) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Withdrawn</div><div class="result-value" style="color:var(--success)">' + formatCompact(lp.withdrawn) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Fee Earnings</div><div class="result-value" style="color:var(--warning)">' + formatCompact(lp.feeEarnings) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Current Value</div><div class="result-value ' + valueClass + '">' + formatCompact(lp.currentValue) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">Unreal. PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(lp.unrealizedPnL) + ' (' + lp.pnlPct.toFixed(1) + '%)</div></div>';
+}
+
+function refreshLpStats(lpName) {
+  if (!dualMarket || !dualMarket.initialized) return;
+  var cGrid = document.getElementById('lpStatsCurrentGrid');
+  var iGrid = document.getElementById('lpStatsImprovedGrid');
+
+  if (!lpName) {
+    var emptyHtml = '<div class="result-item"><div class="result-label">Select an LP</div><div class="result-value">—</div></div>';
+    if (cGrid) cGrid.innerHTML = emptyHtml;
+    if (iGrid) iGrid.innerHTML = emptyHtml;
+    return;
+  }
+
+  var portfolios = dualMarket.getLpPortfolios(lpName);
+  if (cGrid) cGrid.innerHTML = lpStatsHtml(portfolios ? portfolios.current : null, 'current');
+  if (iGrid) iGrid.innerHTML = lpStatsHtml(portfolios ? portfolios.improved : null, 'improved');
+}
+
+function refreshLpCombinedStats(lpName) {
+  var table = document.getElementById('lpComparisonTable');
+  if (!table || !dualMarket || !dualMarket.initialized) return;
+  if (!lpName) { table.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">Select an LP</td></tr>'; return; }
+
+  var portfolios = dualMarket.getLpPortfolios(lpName);
+  var cLp = portfolios ? portfolios.current : null;
+  var iLp = portfolios ? portfolios.improved : null;
+
+  if (!cLp && !iLp) { table.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">No LP position</td></tr>'; return; }
+
+  var rows = [
+    { label: 'Shares', c: cLp ? cLp.shares : 0, i: iLp ? iLp.shares : 0 },
+    { label: 'Pool %', c: cLp ? cLp.poolFraction * 100 : 0, i: iLp ? iLp.poolFraction * 100 : 0, suffix: '%', precision: 1 },
+    { label: 'Deposited', c: cLp ? cLp.deposited : 0, i: iLp ? iLp.deposited : 0, style: 'color:var(--danger)' },
+    { label: 'Withdrawn', c: cLp ? cLp.withdrawn : 0, i: iLp ? iLp.withdrawn : 0, style: 'color:var(--success)' },
+    { label: 'Fee Earnings', c: cLp ? cLp.feeEarnings : 0, i: iLp ? iLp.feeEarnings : 0, style: 'color:var(--warning)' },
+    { label: 'Current Value', c: cLp ? cLp.currentValue : 0, i: iLp ? iLp.currentValue : 0 },
+    { label: 'Unreal. PnL', c: cLp ? cLp.unrealizedPnL : 0, i: iLp ? iLp.unrealizedPnL : 0, style: 'pnl' },
+  ];
+
+  var html = '<thead><tr><th></th><th style="color:var(--primary-light)">Current (WTA)</th><th style="color:var(--accent)">Improved (Kernel)</th><th>Delta</th></tr></thead><tbody>';
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r];
+    var delta = row.i - row.c;
+    var deltaStr = (delta >= 0 ? '+' : '') + (row.suffix ? delta.toFixed(row.precision || 0) + row.suffix : formatCompact(delta));
+    var cStr = row.suffix ? row.c.toFixed(row.precision || 0) + row.suffix : formatCompact(row.c);
+    var iStr = row.suffix ? row.i.toFixed(row.precision || 0) + row.suffix : formatCompact(row.i);
+
+    var cStyle = '', iStyle = '';
+    if (row.style === 'pnl') {
+      cStyle = row.c >= 0 ? 'color:var(--success)' : 'color:var(--danger)';
+      iStyle = row.i >= 0 ? 'color:var(--success)' : 'color:var(--danger)';
+      cStr = formatPnl(row.c);
+      iStr = formatPnl(row.i);
+    } else if (row.style) {
+      cStyle = row.style;
+      iStyle = row.style;
+    }
+
+    html += '<tr><td>' + row.label + '</td><td style="' + cStyle + '">' + cStr + '</td><td style="' + iStyle + '">' + iStr + '</td><td>' + deltaStr + '</td></tr>';
+  }
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+// --- LP Preview ---
+
+function computeLpAddPreview(engine, lpName, amount) {
+  var lp = engine.lpProviders[lpName];
+  var existingShares = lp ? lp.shares : 0;
+  var newShares = engine.totalLpShares > 0 ? engine.totalLpShares * amount / engine.k : amount;
+  var newTotalShares = engine.totalLpShares + newShares;
+  var poolFraction = (existingShares + newShares) / newTotalShares;
+  var newK = engine.k + amount;
+  var feeEarnings = engine.accumulatedLpFees * poolFraction;
+  var currentValue = newK * poolFraction + feeEarnings;
+  var totalDeposited = (lp ? lp.deposited : 0) + amount;
+  var totalWithdrawn = lp ? lp.withdrawn : 0;
+  return {
+    sharesReceived: newShares, totalShares: newTotalShares,
+    poolFraction: poolFraction, newK: newK,
+    currentValue: currentValue, totalDeposited: totalDeposited,
+    unrealizedPnL: currentValue + totalWithdrawn - totalDeposited,
+  };
+}
+
+function computeLpRemovePreview(engine, lpName, amount) {
+  var lp = engine.lpProviders[lpName];
+  if (!lp || lp.shares <= 0) return null;
+  var maxAmount = engine.k * lp.shares / engine.totalLpShares;
+  var actualAmount = Math.min(amount, maxAmount);
+  var sharesToBurn = actualAmount * engine.totalLpShares / engine.k;
+  sharesToBurn = Math.min(sharesToBurn, lp.shares);
+  var collateralOut = engine.k * sharesToBurn / engine.totalLpShares;
+  var feeShare = engine.accumulatedLpFees * sharesToBurn / engine.totalLpShares;
+  var totalPayout = collateralOut + feeShare;
+  var remainingShares = lp.shares - sharesToBurn;
+  var newTotalShares = engine.totalLpShares - sharesToBurn;
+  return {
+    sharesBurned: sharesToBurn, collateralOut: collateralOut,
+    feeShare: feeShare, totalPayout: totalPayout,
+    remainingShares: remainingShares,
+    poolFraction: newTotalShares > 0 ? remainingShares / newTotalShares : 0,
+  };
+}
+
+function lpPreviewHtml(preview, action) {
+  if (!preview) return '<div class="result-item"><div class="result-label">No LP position</div><div class="result-value">—</div></div>';
+  if (action === 'add') {
+    var pnlClass = preview.unrealizedPnL >= 0 ? 'positive' : 'negative';
+    return '' +
+      '<div class="result-item"><div class="result-label">Shares +</div><div class="result-value" style="color:var(--success)">' + formatCompact(preview.sharesReceived) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Pool %</div><div class="result-value">' + (preview.poolFraction * 100).toFixed(1) + '%</div></div>' +
+      '<div class="result-item"><div class="result-label">New Vault (k)</div><div class="result-value">' + formatCompact(preview.newK) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Est. Value</div><div class="result-value">' + formatCompact(preview.currentValue) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Est. PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(preview.unrealizedPnL) + '</div></div>';
+  } else {
+    return '' +
+      '<div class="result-item"><div class="result-label">Shares Burned</div><div class="result-value" style="color:var(--danger)">' + formatCompact(preview.sharesBurned) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Collateral Out</div><div class="result-value" style="color:var(--success)">' + formatCompact(preview.collateralOut) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Fee Share</div><div class="result-value" style="color:var(--warning)">' + formatCompact(preview.feeShare) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Total Payout</div><div class="result-value" style="color:var(--success)">' + formatCompact(preview.totalPayout) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Remaining %</div><div class="result-value">' + (preview.poolFraction * 100).toFixed(1) + '%</div></div>';
+  }
+}
+
+function updateLpPreview() {
+  if (!dualMarket || !dualMarket.initialized) return;
+  var lpName = document.getElementById('lpTraderSelect').value;
+  var amount = parseFloat(document.getElementById('lpAmount').value);
+  if (!lpName || isNaN(amount) || amount <= 0) return;
+
+  var cHasLp = dualMarket.current.lpProviders[lpName] && dualMarket.current.lpProviders[lpName].shares > 0;
+
+  // Show add preview by default, remove preview if they have LP
+  var cAddP = computeLpAddPreview(dualMarket.current, lpName, amount);
+  var iAddP = computeLpAddPreview(dualMarket.improved, lpName, amount);
+  var cRemP = cHasLp ? computeLpRemovePreview(dualMarket.current, lpName, amount) : null;
+  var iRemP = cHasLp ? computeLpRemovePreview(dualMarket.improved, lpName, amount) : null;
+
+  // Split mode
+  var cGrid = document.getElementById('lpPreviewCurrentGrid');
+  var iGrid = document.getElementById('lpPreviewImprovedGrid');
+  if (cGrid) {
+    var html = '<div style="margin-bottom:6px;font-size:0.7rem;color:var(--success);font-weight:600;">Add Preview</div>' + lpPreviewHtml(cAddP, 'add');
+    if (cRemP) html += '<div style="margin-top:8px;margin-bottom:6px;font-size:0.7rem;color:var(--danger);font-weight:600;">Remove Preview</div>' + lpPreviewHtml(cRemP, 'remove');
+    cGrid.innerHTML = html;
+  }
+  if (iGrid) {
+    var html2 = '<div style="margin-bottom:6px;font-size:0.7rem;color:var(--success);font-weight:600;">Add Preview</div>' + lpPreviewHtml(iAddP, 'add');
+    if (iRemP) html2 += '<div style="margin-top:8px;margin-bottom:6px;font-size:0.7rem;color:var(--danger);font-weight:600;">Remove Preview</div>' + lpPreviewHtml(iRemP, 'remove');
+    iGrid.innerHTML = html2;
+  }
+
+  // Combined mode
+  if (chartMode === 'combined') {
+    var table = document.getElementById('lpPreviewComparisonTable');
+    if (table) {
+      var rows = [
+        { label: 'Add: Shares +', c: cAddP.sharesReceived, i: iAddP.sharesReceived },
+        { label: 'Add: Pool %', c: cAddP.poolFraction * 100, i: iAddP.poolFraction * 100, suffix: '%', precision: 1 },
+        { label: 'Add: Est. Value', c: cAddP.currentValue, i: iAddP.currentValue },
+      ];
+      if (cRemP && iRemP) {
+        rows.push({ label: 'Rem: Payout', c: cRemP.totalPayout, i: iRemP.totalPayout });
+        rows.push({ label: 'Rem: Fee Share', c: cRemP.feeShare, i: iRemP.feeShare });
+      }
+      var html3 = '<thead><tr><th></th><th style="color:var(--primary-light)">Current</th><th style="color:var(--accent)">Improved</th><th>Delta</th></tr></thead><tbody>';
+      for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        var delta = row.i - row.c;
+        var cStr = row.suffix ? row.c.toFixed(row.precision || 0) + row.suffix : formatCompact(row.c);
+        var iStr = row.suffix ? row.i.toFixed(row.precision || 0) + row.suffix : formatCompact(row.i);
+        var deltaStr = (delta >= 0 ? '+' : '') + (row.suffix ? delta.toFixed(row.precision || 0) + row.suffix : formatCompact(delta));
+        html3 += '<tr><td>' + row.label + '</td><td>' + cStr + '</td><td>' + iStr + '</td><td>' + deltaStr + '</td></tr>';
+      }
+      html3 += '</tbody>';
+      table.innerHTML = html3;
+    }
+  }
+}
+
+// --- LP Execute ---
+
+function executeLp(action) {
+  if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first', 'error');
+  var lpName = document.getElementById('lpTraderSelect').value;
+  if (!lpName) return showToast('Select an LP', 'error');
+  var result;
+
+  if (action === 'removeAll') {
+    var cLp = dualMarket.current.lpProviders[lpName];
+    if (!cLp || cLp.shares <= 0) return showToast('No LP position to remove', 'error');
+    var maxAmount = dualMarket.current.k * cLp.shares / dualMarket.current.totalLpShares;
+    result = dualMarket.removeLiquidity(lpName, maxAmount + 1);
+    if (result.error) return showToast(result.error, 'error');
+    showToast('Removed all LP for ' + lpName, 'success');
+  } else {
+    var amount = parseFloat(document.getElementById('lpAmount').value);
+    if (isNaN(amount) || amount <= 0) return showToast('Enter a valid amount', 'error');
+
+    if (action === 'add') {
+      result = dualMarket.addLiquidity(lpName, amount);
+      if (result.error) return showToast(result.error, 'error');
+      showToast('Added ' + formatCompact(amount) + ' LP for ' + lpName + ' (' + formatCompact(result.current.sharesReceived) + ' shares)', 'success');
+    } else if (action === 'remove') {
+      result = dualMarket.removeLiquidity(lpName, amount);
+      if (result.error) return showToast(result.error, 'error');
+      showToast('Removed LP: ' + formatCompact(result.current.totalPayout) + ' returned to ' + lpName, 'success');
+    }
+  }
+
+  refreshLpTab();
+  refreshDistCharts();
+}
+
+// --- Combined Trader + LP Stats ---
+
+function refreshLpCombinedTraderStats(lpName) {
+  var cGrid = document.getElementById('lpCombinedCurrentGrid');
+  var iGrid = document.getElementById('lpCombinedImprovedGrid');
+  if (!cGrid || !iGrid) return;
+  if (!dualMarket || !dualMarket.initialized || !lpName) {
+    var emptyHtml = '<div class="result-item"><div class="result-label">Select a user</div><div class="result-value">—</div></div>';
+    cGrid.innerHTML = emptyHtml;
+    iGrid.innerHTML = emptyHtml;
+    return;
+  }
+
+  var traderP = dualMarket.getPortfolios(lpName);
+  var lpP = dualMarket.getLpPortfolios(lpName);
+
+  function combinedHtml(tp, lp, engine) {
+    var hasTrading = tp && tp.totalSpent > 0;
+    var hasLp = lp && lp.shares > 0;
+    if (!hasTrading && !hasLp) return '<div class="result-item"><div class="result-label">No positions</div><div class="result-value">—</div></div>';
+
+    var tradingEP = hasTrading ? tp.expectedPayout : 0;
+    var lpValue = hasLp ? lp.currentValue : 0;
+    var totalValue = tradingEP + lpValue;
+    var totalSpent = (hasTrading ? tp.totalSpent : 0) + (hasLp ? lp.deposited : 0);
+    var totalReceived = (hasTrading ? tp.totalReceived : 0) + (hasLp ? lp.withdrawn : 0);
+    var totalPnL = totalValue + totalReceived - totalSpent;
+    var pnlClass = totalPnL >= 0 ? 'positive' : 'negative';
+    var pnlPct = totalSpent > 0 ? (totalPnL / totalSpent * 100).toFixed(1) : '0.0';
+
+    return '' +
+      '<div class="result-item"><div class="result-label">Trading E[Payout]</div><div class="result-value">' + formatCompact(tradingEP) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">LP Value</div><div class="result-value">' + formatCompact(lpValue) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Total Value</div><div class="result-value">' + formatCompact(totalValue) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Total Spent</div><div class="result-value" style="color:var(--danger)">' + formatCompact(totalSpent) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Total Received</div><div class="result-value" style="color:var(--success)">' + formatCompact(totalReceived) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Combined PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(totalPnL) + ' (' + pnlPct + '%)</div></div>';
+  }
+
+  cGrid.innerHTML = combinedHtml(traderP ? traderP.current : null, lpP ? lpP.current : null, 'current');
+  iGrid.innerHTML = combinedHtml(traderP ? traderP.improved : null, lpP ? lpP.improved : null, 'improved');
+}
+
+// --- LP Simulation ---
+
+function runLpSimulation() {
+  if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first', 'error');
+
+  var maxTraders = parseInt(document.getElementById('lpSimTraderCount').value, 10);
+  var avgTradeSize = parseInt(document.getElementById('lpSimTradeSize').value, 10);
+  if (isNaN(maxTraders) || isNaN(avgTradeSize)) return;
+
+  var cfg = dualMarket.initConfig;
+  var N = cfg.N;
+  var initLiq = cfg.liquidity;
+
+  var savedGT = globalTraders;
+  globalTraders = {};
+
+  var sim = new CurrentMarket(N, cfg.rangeMin, cfg.rangeMax, initLiq, cfg.fees);
+  var kernelWidth = cfg.kernelWidth;
+
+  var traderLabels = ['0'];
+  var cPnL = [0];
+  var iPnL = [0];
+  var totalHoldings = [];
+  for (var j = 0; j < N; j++) totalHoldings.push(0);
+
+  for (var t = 0; t < maxTraders; t++) {
+    var mu = cfg.rangeMin + ((t + 0.5) / maxTraders) * (cfg.rangeMax - cfg.rangeMin);
+    var sigma = (cfg.rangeMax - cfg.rangeMin) / 6;
+    var name = '_sim_' + t;
+    globalTraders[name] = { wallet: avgTradeSize * 10 };
+    var result = sim.distributionBuy(name, mu, sigma, avgTradeSize);
+    if (result.tokensPerBin) {
+      for (var j = 0; j < N; j++) totalHoldings[j] += result.tokensPerBin[j];
+    }
+
+    // Compute LP E[PnL] for both market types
+    var cProbs = sim.getProbabilities();
+    var sumPos = 0;
+    for (var j = 0; j < N; j++) sumPos += sim.positions[j];
+
+    var cExp = 0, iExp = 0;
+    for (var bin = 0; bin < N; bin++) {
+      // Current (WTA): LP gets k minus trader tokens in winning bin
+      var cLpPayout = (sim.k - totalHoldings[bin]) + sim.accumulatedLpFees;
+      cExp += cProbs[bin] * cLpPayout;
+
+      // Improved (Kernel): LP gets k minus kernel-weighted claim
+      var iProb = sumPos > 0 ? sim.positions[bin] / sumPos : 1 / N;
+      var kernelClaim = 0;
+      var ww = kernelWidth;
+      for (var i = Math.max(0, bin - ww); i <= Math.min(N - 1, bin + ww); i++) {
+        var weight = Math.max(0, 1 - Math.abs(i - bin) / (ww + 1));
+        kernelClaim += totalHoldings[i] * weight;
+      }
+      var claimScale = kernelClaim > sim.k ? sim.k / kernelClaim : 1;
+      var iLpPayout = (sim.k - kernelClaim * claimScale) + sim.accumulatedLpFees;
+      iExp += iProb * iLpPayout;
+    }
+
+    traderLabels.push(String(t + 1));
+    cPnL.push(cExp - initLiq);
+    iPnL.push(iExp - initLiq);
+  }
+
+  globalTraders = savedGT;
+
+  // Update charts
+  var colors = getChartColors();
+  var simConfig = function (data, label, color) {
+    return {
+      type: 'line',
+      data: {
+        labels: traderLabels,
+        datasets: [
+          {
+            label: label,
+            data: data,
+            borderColor: color,
+            backgroundColor: color + '22',
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.1,
+          },
+          {
+            label: 'Break-even',
+            data: traderLabels.map(function () { return 0; }),
+            borderColor: colors.muted,
+            borderDash: [6, 3],
+            borderWidth: 1,
+            pointRadius: 0,
+            fill: false,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: function (items) { return items[0].label + ' traders'; },
+              label: function (ctx) { return ctx.dataset.label + ': ' + formatPnl(ctx.parsed.y); },
+            },
+          },
+          zoom: getZoomPluginConfig(),
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Number of Traders', color: colors.text, font: { size: 10 } },
+            ticks: { color: colors.text, maxTicksLimit: 10, font: { size: 9 } },
+            grid: { color: colors.grid },
+          },
+          y: {
+            title: { display: true, text: 'LP E[PnL]', color: colors.text, font: { size: 10 } },
+            ticks: { color: colors.text, font: { size: 9 }, callback: function (v) { return formatCompact(v); } },
+            grid: { color: colors.grid },
+          },
+        },
+      },
+    };
+  };
+
+  getOrCreateChart('lpSimCurrentChart', simConfig(cPnL, 'Current LP E[PnL]', colors.primary));
+  getOrCreateChart('lpSimImprovedChart', simConfig(iPnL, 'Improved LP E[PnL]', colors.accent));
+
+  // Combined
+  getOrCreateChart('lpSimCombinedChart', {
+    type: 'line',
+    data: {
+      labels: traderLabels,
+      datasets: [
+        { label: 'Current LP E[PnL]', data: cPnL, borderColor: colors.primary, backgroundColor: colors.primary + '18', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.1 },
+        { label: 'Improved LP E[PnL]', data: iPnL, borderColor: colors.accent, backgroundColor: colors.accent + '18', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.1 },
+        { label: 'Break-even', data: traderLabels.map(function () { return 0; }), borderColor: colors.muted, borderDash: [6, 3], borderWidth: 1, pointRadius: 0, fill: false },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: colors.text, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            title: function (items) { return items[0].label + ' traders'; },
+            label: function (ctx) { return ctx.dataset.label + ': ' + formatPnl(ctx.parsed.y); },
+          },
+        },
+        zoom: getZoomPluginConfig(),
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Number of Traders', color: colors.text, font: { size: 10 } },
+          ticks: { color: colors.text, maxTicksLimit: 10, font: { size: 9 } },
+          grid: { color: colors.grid },
+        },
+        y: {
+          title: { display: true, text: 'LP E[PnL]', color: colors.text, font: { size: 10 } },
+          ticks: { color: colors.text, font: { size: 9 }, callback: function (v) { return formatCompact(v); } },
+          grid: { color: colors.grid },
+        },
+      },
+    },
+  });
+
+  applyChartMode();
+  showToast('Simulation complete: ' + maxTraders + ' traders, ' + formatCompact(avgTradeSize) + ' avg size', 'success');
+}
+
+// LP tab event listeners
+document.getElementById('lpTraderSelect').addEventListener('change', function () {
+  refreshLpTab();
+});
+document.getElementById('lpAmount').addEventListener('input', function () {
+  updateLpPreview();
+});
+document.getElementById('lpSimTraderCount').addEventListener('input', function () {
+  document.getElementById('lpSimTraderCountLabel').textContent = '(' + this.value + ')';
+});
+document.getElementById('lpSimTradeSize').addEventListener('input', function () {
+  document.getElementById('lpSimTradeSizeLabel').textContent = '(' + this.value + ')';
 });
 
 // ============================================================

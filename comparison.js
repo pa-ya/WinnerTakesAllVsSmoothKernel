@@ -135,6 +135,9 @@ function updateAllCharts() {
     if (dualMarket.current.resolved && typeof renderKernelChart === 'function') {
       renderKernelChart(dualMarket.current.winningBin);
     }
+    // LP charts
+    if (typeof initLpPayoutCharts === 'function') initLpPayoutCharts();
+    if (typeof refreshLpTab === 'function') refreshLpTab();
   }
 }
 
@@ -970,6 +973,127 @@ ImprovedMarket.prototype.getTraderPortfolio = function (traderName) {
 };
 
 // ============================================================
+// LP OPERATIONS
+// ============================================================
+
+CurrentMarket.prototype.addLiquidity = function (lpName, amount) {
+  if (this.resolved) return { error: 'Market is resolved' };
+  var gt = globalTraders[lpName];
+  if (!gt) return { error: 'Unknown user' };
+  if (gt.wallet < amount) return { error: 'Insufficient balance' };
+
+  var newShares = this.totalLpShares > 0 ? this.totalLpShares * amount / this.k : amount;
+  var scaleFactor = (this.k + amount) / this.k;
+  for (var j = 0; j < this.N; j++) this.positions[j] *= scaleFactor;
+
+  this.k += amount;
+  this.totalLpShares += newShares;
+  if (!this.lpProviders[lpName]) this.lpProviders[lpName] = { shares: 0, deposited: 0, withdrawn: 0 };
+  this.lpProviders[lpName].shares += newShares;
+  this.lpProviders[lpName].deposited += amount;
+  gt.wallet -= amount;
+
+  return {
+    sharesReceived: newShares, totalShares: this.totalLpShares,
+    poolFraction: this.lpProviders[lpName].shares / this.totalLpShares, amount: amount,
+  };
+};
+
+CurrentMarket.prototype.removeLiquidity = function (lpName, amount) {
+  if (this.resolved) return { error: 'Market is resolved' };
+  var gt = globalTraders[lpName];
+  if (!gt) return { error: 'Unknown user' };
+  var lp = this.lpProviders[lpName];
+  if (!lp || lp.shares <= 0) return { error: 'No LP position' };
+
+  var maxAmount = this.k * lp.shares / this.totalLpShares;
+  var actualAmount = Math.min(amount, maxAmount);
+  var sharesToBurn = actualAmount * this.totalLpShares / this.k;
+  sharesToBurn = Math.min(sharesToBurn, lp.shares);
+
+  var collateralOut = this.k * sharesToBurn / this.totalLpShares;
+  var feeShare = this.accumulatedLpFees * sharesToBurn / this.totalLpShares;
+  var totalPayout = collateralOut + feeShare;
+
+  var scaleFactor = (this.k - collateralOut) / this.k;
+  for (var j = 0; j < this.N; j++) this.positions[j] *= scaleFactor;
+
+  this.k -= collateralOut;
+  this.totalLpShares -= sharesToBurn;
+  this.accumulatedLpFees -= feeShare;
+  lp.shares -= sharesToBurn;
+  lp.withdrawn += totalPayout;
+  gt.wallet += totalPayout;
+
+  return {
+    sharesBurned: sharesToBurn, collateralOut: collateralOut,
+    feeShare: feeShare, totalPayout: totalPayout,
+    remainingShares: lp.shares,
+    poolFraction: this.totalLpShares > 0 ? lp.shares / this.totalLpShares : 0,
+  };
+};
+
+CurrentMarket.prototype.getLpPortfolio = function (lpName) {
+  var lp = this.lpProviders[lpName];
+  if (!lp) return null;
+  var poolFraction = this.totalLpShares > 0 ? lp.shares / this.totalLpShares : 0;
+  var feeEarnings = this.accumulatedLpFees * poolFraction;
+  var currentValue = this.k * poolFraction + feeEarnings;
+  var unrealizedPnL = currentValue + lp.withdrawn - lp.deposited;
+
+  var payoutPerOutcome = [];
+  for (var bin = 0; bin < this.N; bin++) {
+    var totalTraderTokens = 0;
+    for (var name in this.traderHoldings) totalTraderTokens += this.traderHoldings[name].holdings[bin];
+    var lpResidual = this.k - totalTraderTokens;
+    var redemptionFees = totalTraderTokens * this.redemptionFeeBps / 10000;
+    payoutPerOutcome.push((lpResidual + redemptionFees) * poolFraction + feeEarnings);
+  }
+
+  return {
+    shares: lp.shares, totalShares: this.totalLpShares, poolFraction: poolFraction,
+    deposited: lp.deposited, withdrawn: lp.withdrawn, feeEarnings: feeEarnings,
+    currentValue: currentValue, unrealizedPnL: unrealizedPnL,
+    pnlPct: lp.deposited > 0 ? unrealizedPnL / lp.deposited * 100 : 0,
+    payoutPerOutcome: payoutPerOutcome,
+  };
+};
+
+ImprovedMarket.prototype.addLiquidity = CurrentMarket.prototype.addLiquidity;
+ImprovedMarket.prototype.removeLiquidity = CurrentMarket.prototype.removeLiquidity;
+
+ImprovedMarket.prototype.getLpPortfolio = function (lpName) {
+  var lp = this.lpProviders[lpName];
+  if (!lp) return null;
+  var poolFraction = this.totalLpShares > 0 ? lp.shares / this.totalLpShares : 0;
+  var feeEarnings = this.accumulatedLpFees * poolFraction;
+  var currentValue = this.k * poolFraction + feeEarnings;
+  var unrealizedPnL = currentValue + lp.withdrawn - lp.deposited;
+
+  var payoutPerOutcome = [];
+  for (var bin = 0; bin < this.N; bin++) {
+    var kernel = this.getSettlementKernel(bin);
+    var totalKernelClaim = 0;
+    for (var name in this.traderHoldings) {
+      var th = this.traderHoldings[name];
+      for (var i = 0; i < this.N; i++) totalKernelClaim += th.holdings[i] * kernel[i];
+    }
+    var claimScale = (totalKernelClaim > this.k && totalKernelClaim > 0) ? this.k / totalKernelClaim : 1;
+    var lpResidual = this.k - totalKernelClaim * claimScale;
+    var redemptionFees = totalKernelClaim * claimScale * this.redemptionFeeBps / 10000;
+    payoutPerOutcome.push((lpResidual + redemptionFees) * poolFraction + feeEarnings);
+  }
+
+  return {
+    shares: lp.shares, totalShares: this.totalLpShares, poolFraction: poolFraction,
+    deposited: lp.deposited, withdrawn: lp.withdrawn, feeEarnings: feeEarnings,
+    currentValue: currentValue, unrealizedPnL: unrealizedPnL,
+    pnlPct: lp.deposited > 0 ? unrealizedPnL / lp.deposited * 100 : 0,
+    payoutPerOutcome: payoutPerOutcome,
+  };
+};
+
+// ============================================================
 // 7. DUAL MARKET ORCHESTRATOR
 // ============================================================
 // Wraps CurrentMarket + ImprovedMarket. Every action is applied
@@ -1002,6 +1126,10 @@ DualMarket.prototype.init = function (N, rangeMin, rangeMax, liquidity, fees, ke
   this.traders = {};
   globalTraders = {};
   this.initialized = true;
+  this.initConfig = {
+    N: N, rangeMin: rangeMin, rangeMax: rangeMax, liquidity: liquidity,
+    fees: baseFees, kernelWidth: improvedFees.kernelWidth,
+  };
 
   return { current: this.current, improved: this.improved };
 };
@@ -1130,6 +1258,43 @@ DualMarket.prototype.verifySync = function () {
     maxPositionDrift: maxDrift,
     kDrift: kDiff,
   };
+};
+
+DualMarket.prototype.addLiquidity = function (lpName, amount) {
+  if (!this.initialized) return { error: 'Market not initialized' };
+  if (!this.traders[lpName]) return { error: 'Unknown user: ' + lpName };
+
+  this._setWallets(lpName, 'current');
+  var currentResult = this.current.addLiquidity(lpName, amount);
+  if (currentResult.error) return { error: currentResult.error, current: currentResult, improved: null };
+  this._saveWallet(lpName, 'current');
+
+  this._setWallets(lpName, 'improved');
+  var improvedResult = this.improved.addLiquidity(lpName, amount);
+  this._saveWallet(lpName, 'improved');
+
+  return { current: currentResult, improved: improvedResult };
+};
+
+DualMarket.prototype.removeLiquidity = function (lpName, amount) {
+  if (!this.initialized) return { error: 'Market not initialized' };
+  if (!this.traders[lpName]) return { error: 'Unknown user: ' + lpName };
+
+  this._setWallets(lpName, 'current');
+  var currentResult = this.current.removeLiquidity(lpName, amount);
+  if (currentResult.error) return { error: currentResult.error, current: currentResult, improved: null };
+  this._saveWallet(lpName, 'current');
+
+  this._setWallets(lpName, 'improved');
+  var improvedResult = this.improved.removeLiquidity(lpName, amount);
+  this._saveWallet(lpName, 'improved');
+
+  return { current: currentResult, improved: improvedResult };
+};
+
+DualMarket.prototype.getLpPortfolios = function (lpName) {
+  if (!this.initialized) return null;
+  return { current: this.current.getLpPortfolio(lpName), improved: this.improved.getLpPortfolio(lpName) };
 };
 
 // ============================================================
