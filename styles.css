@@ -278,8 +278,12 @@ html.theme-light .navbar {
   border-radius: var(--radius-sm);
   font-size: 0.88rem;
   font-family: var(--font-mono);
-  transition: border-color var(--transition);
+  transition: border-color var(--transition), box-shadow var(--transition);
   width: 100%;
+}
+
+.control-input:hover:not(:focus):not([type="range"]) {
+  border-color: var(--border-light);
 }
 
 .control-input:focus {
@@ -299,6 +303,7 @@ html.theme-light .navbar {
   outline: none;
   cursor: pointer;
   transition: background 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
 }
 
 .control-input[type="range"]:hover {
@@ -366,7 +371,19 @@ html.theme-light .navbar {
   font-weight: 600;
 }
 
-select.control-input { cursor: pointer; }
+select.control-input {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%2394a3b8' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+}
+
+select.control-input:focus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%233b82f6' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
 
 /* ============================================================
    BUTTONS
@@ -484,11 +501,17 @@ select.control-input { cursor: pointer; }
   background: var(--bg-input);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 4px 10px;
+  padding: 4px 28px 4px 10px;
   border-radius: 6px;
   font-size: 0.82rem;
   font-family: var(--font-mono);
   transition: border-color var(--transition);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2394a3b8' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
 }
 .toolbar-select:focus { outline: none; border-color: var(--primary); }
 
@@ -509,16 +532,18 @@ select.control-input { cursor: pointer; }
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: all 0.2s ease;
   font-family: inherit;
 }
 
 .chart-mode-btn.active {
   background: var(--primary);
   color: white;
+  box-shadow: 0 1px 4px rgba(59,130,246,0.3);
 }
 
-.chart-mode-btn:hover:not(.active) { color: var(--text); }
+.chart-mode-btn:hover:not(.active) { color: var(--text); background: var(--bg-card-hover); }
+.chart-mode-btn:active { transform: scale(0.96); }
 
 /* Toggle switch */
 .toggle-switch {
@@ -724,9 +749,10 @@ select.control-input { cursor: pointer; }
 /* Table mode for result-grids */
 .result-grid.table-mode {
   display: block;
-  overflow-x: auto;
+  overflow: auto;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
+  background: var(--bg-card);
 }
 
 .result-grid.table-mode .result-table-inner {
@@ -951,10 +977,27 @@ select.control-input { cursor: pointer; }
    PAYOUT TABLE (Resolve tab)
    ============================================================ */
 .payout-table-wrapper {
-  overflow-x: auto;
-  border-radius: var(--radius-sm);
+  overflow: auto;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   margin: 16px 0;
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+.payout-table-wrapper:hover {
+  border-color: var(--border-light);
+}
+
+.payout-table-title {
+  padding: 14px 16px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--purple);
+  border-bottom: 1px solid var(--border);
 }
 
 .payout-table {
@@ -971,6 +1014,7 @@ select.control-input { cursor: pointer; }
   text-align: center;
   white-space: nowrap;
   font-size: 0.78rem;
+  border-bottom: 2px solid rgba(255,255,255,0.1);
 }
 
 .payout-table tbody td {
@@ -983,6 +1027,7 @@ select.control-input { cursor: pointer; }
 
 .payout-table tbody tr { transition: background var(--transition); }
 .payout-table tbody tr:hover { background: var(--bg-card-hover); }
+.payout-table tbody tr:last-child td { border-bottom: none; }
 
 .payout-table .row-current { border-left: 3px solid var(--primary); }
 .payout-table .row-improved { border-left: 3px solid var(--accent); }
