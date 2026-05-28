@@ -319,9 +319,9 @@
         <div class="control-group" style="flex:0 0 auto;">
           <label class="control-label">&nbsp;</label>
           <div class="btn-group">
-            <button class="btn btn-success" onclick="executeLp('add')">Add LP</button>
-            <button class="btn btn-danger" onclick="executeLp('remove')">Remove LP</button>
-            <button class="btn btn-outline" onclick="executeLp('removeAll')" style="border:1px solid var(--border);">All</button>
+            <button class="btn btn-success" onclick="executeLp('add')">+ Add LP</button>
+            <button class="btn btn-danger" onclick="executeLp('remove')">- Remove LP</button>
+            <button class="btn btn-outline lp-remove-all-btn" onclick="executeLp('removeAll')">Remove All</button>
           </div>
         </div>
       </div>
@@ -1660,22 +1660,32 @@ function renderTraderList() {
 
 function updateTraderSelectors() {
   var names = traderRegistry.map(function (t) { return t.name; });
-  var selectors = [
-    document.getElementById('distTraderSelect'),
-    document.getElementById('lpTraderSelect'),
-  ];
-  for (var s = 0; s < selectors.length; s++) {
-    var sel = selectors[s];
-    if (!sel) continue;
-    var prev = sel.value;
-    sel.innerHTML = '';
+  var lpNames = ['Creator'].concat(names);
+
+  var distSel = document.getElementById('distTraderSelect');
+  if (distSel) {
+    var prevDist = distSel.value;
+    distSel.innerHTML = '';
     for (var i = 0; i < names.length; i++) {
       var opt = document.createElement('option');
       opt.value = names[i];
       opt.textContent = names[i];
-      sel.appendChild(opt);
+      distSel.appendChild(opt);
     }
-    if (prev && names.indexOf(prev) >= 0) sel.value = prev;
+    if (prevDist && names.indexOf(prevDist) >= 0) distSel.value = prevDist;
+  }
+
+  var lpSel = document.getElementById('lpTraderSelect');
+  if (lpSel) {
+    var prevLp = lpSel.value;
+    lpSel.innerHTML = '';
+    for (var j = 0; j < lpNames.length; j++) {
+      var opt2 = document.createElement('option');
+      opt2.value = lpNames[j];
+      opt2.textContent = lpNames[j] + (lpNames[j] === 'Creator' ? ' (initial LP)' : '');
+      lpSel.appendChild(opt2);
+    }
+    if (prevLp && lpNames.indexOf(prevLp) >= 0) lpSel.value = prevLp;
   }
 }
 

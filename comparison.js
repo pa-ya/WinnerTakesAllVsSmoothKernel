@@ -1124,6 +1124,7 @@ DualMarket.prototype.init = function (N, rangeMin, rangeMax, liquidity, fees, ke
   this.improved = new ImprovedMarket(N, rangeMin, rangeMax, liquidity, improvedFees);
 
   this.traders = {};
+  this.traders['Creator'] = { currentWallet: 0, improvedWallet: 0, initialBalance: liquidity };
   globalTraders = {};
   this.initialized = true;
   this.initConfig = {

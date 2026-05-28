@@ -811,6 +811,51 @@ select.control-input { cursor: pointer; }
 .collapsible { display: none; }
 .collapsible.open { display: block; }
 
+/* Collapsible sections (LP tab, etc.) */
+.collapsible-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-top: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition), border-color var(--transition);
+  user-select: none;
+}
+
+.collapsible-title:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--primary);
+}
+
+.collapsible-title::before {
+  content: '\25B6';
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  transition: transform var(--transition);
+  display: inline-block;
+}
+
+.collapsible-title.open::before {
+  transform: rotate(90deg);
+  color: var(--primary-light);
+}
+
+.collapsible-body {
+  display: none;
+  padding-top: 12px;
+}
+
+.collapsible-body.open {
+  display: block;
+}
+
 /* Trader list */
 .trader-list {
   display: flex;
@@ -912,6 +957,28 @@ select.control-input { cursor: pointer; }
 .modal .control-group { margin-bottom: 14px; }
 
 /* ============================================================
+   LP TAB ENHANCEMENTS
+   ============================================================ */
+.lp-remove-all-btn {
+  border: 1px solid var(--danger) !important;
+  color: var(--danger) !important;
+  background: transparent;
+}
+
+.lp-remove-all-btn:hover {
+  background: var(--danger-glow) !important;
+}
+
+#tab-lp .dual-stats,
+#tab-lp .stats-panel:not(:last-child) {
+  margin-bottom: 0;
+}
+
+#tab-lp > .collapsible-title:first-of-type {
+  margin-top: 16px;
+}
+
+/* ============================================================
    EMPTY STATE / PLACEHOLDER
    ============================================================ */
 .empty-state {
@@ -969,4 +1036,6 @@ select.control-input { cursor: pointer; }
   .payout-table tbody td { padding: 5px 8px; font-size: 0.75rem; }
   .setup-card { padding: 16px; }
   .modal { padding: 20px; }
+  .collapsible-title { padding: 8px 10px; font-size: 0.78rem; }
+  #tab-lp .btn-group { flex-wrap: wrap; }
 }
