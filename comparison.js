@@ -29,6 +29,7 @@ var settings = {
   fontSize: 'md',
   numberFormat: 'short',
   decimalPrecision: 1,
+  statsMode: 'cards',
 };
 
 // ============================================================
@@ -148,6 +149,7 @@ function saveSettings() {
       fontSize: settings.fontSize,
       numberFormat: settings.numberFormat,
       decimalPrecision: settings.decimalPrecision,
+      statsMode: settings.statsMode,
     }));
   } catch (e) { /* ignore */ }
 }
@@ -161,6 +163,7 @@ function loadSettings() {
     if (s.fontSize) settings.fontSize = s.fontSize;
     if (s.numberFormat) settings.numberFormat = s.numberFormat;
     if (typeof s.decimalPrecision === 'number') settings.decimalPrecision = s.decimalPrecision;
+    if (s.statsMode) settings.statsMode = s.statsMode;
   } catch (e) { /* ignore */ }
 }
 
@@ -1059,6 +1062,34 @@ CurrentMarket.prototype.getLpPortfolio = function (lpName) {
   };
 };
 
+CurrentMarket.prototype.getAllLpPortfolio = function () {
+  var totalDeposited = 0, totalWithdrawn = 0;
+  for (var name in this.lpProviders) {
+    totalDeposited += this.lpProviders[name].deposited;
+    totalWithdrawn += this.lpProviders[name].withdrawn;
+  }
+  var feeEarnings = this.accumulatedLpFees;
+  var currentValue = this.k + feeEarnings;
+  var unrealizedPnL = currentValue + totalWithdrawn - totalDeposited;
+
+  var payoutPerOutcome = [];
+  for (var bin = 0; bin < this.N; bin++) {
+    var totalTraderTokens = 0;
+    for (var n in this.traderHoldings) totalTraderTokens += this.traderHoldings[n].holdings[bin];
+    var lpResidual = this.k - totalTraderTokens;
+    var redemptionFees = totalTraderTokens * this.redemptionFeeBps / 10000;
+    payoutPerOutcome.push(lpResidual + redemptionFees + feeEarnings);
+  }
+
+  return {
+    shares: this.totalLpShares, totalShares: this.totalLpShares, poolFraction: 1,
+    deposited: totalDeposited, withdrawn: totalWithdrawn, feeEarnings: feeEarnings,
+    currentValue: currentValue, unrealizedPnL: unrealizedPnL,
+    pnlPct: totalDeposited > 0 ? unrealizedPnL / totalDeposited * 100 : 0,
+    payoutPerOutcome: payoutPerOutcome,
+  };
+};
+
 ImprovedMarket.prototype.addLiquidity = CurrentMarket.prototype.addLiquidity;
 ImprovedMarket.prototype.removeLiquidity = CurrentMarket.prototype.removeLiquidity;
 
@@ -1089,6 +1120,39 @@ ImprovedMarket.prototype.getLpPortfolio = function (lpName) {
     deposited: lp.deposited, withdrawn: lp.withdrawn, feeEarnings: feeEarnings,
     currentValue: currentValue, unrealizedPnL: unrealizedPnL,
     pnlPct: lp.deposited > 0 ? unrealizedPnL / lp.deposited * 100 : 0,
+    payoutPerOutcome: payoutPerOutcome,
+  };
+};
+
+ImprovedMarket.prototype.getAllLpPortfolio = function () {
+  var totalDeposited = 0, totalWithdrawn = 0;
+  for (var name in this.lpProviders) {
+    totalDeposited += this.lpProviders[name].deposited;
+    totalWithdrawn += this.lpProviders[name].withdrawn;
+  }
+  var feeEarnings = this.accumulatedLpFees;
+  var currentValue = this.k + feeEarnings;
+  var unrealizedPnL = currentValue + totalWithdrawn - totalDeposited;
+
+  var payoutPerOutcome = [];
+  for (var bin = 0; bin < this.N; bin++) {
+    var kernel = this.getSettlementKernel(bin);
+    var totalKernelClaim = 0;
+    for (var n in this.traderHoldings) {
+      var th = this.traderHoldings[n];
+      for (var i = 0; i < this.N; i++) totalKernelClaim += th.holdings[i] * kernel[i];
+    }
+    var claimScale = (totalKernelClaim > this.k && totalKernelClaim > 0) ? this.k / totalKernelClaim : 1;
+    var lpResidual = this.k - totalKernelClaim * claimScale;
+    var redemptionFees = totalKernelClaim * claimScale * this.redemptionFeeBps / 10000;
+    payoutPerOutcome.push(lpResidual + redemptionFees + feeEarnings);
+  }
+
+  return {
+    shares: this.totalLpShares, totalShares: this.totalLpShares, poolFraction: 1,
+    deposited: totalDeposited, withdrawn: totalWithdrawn, feeEarnings: feeEarnings,
+    currentValue: currentValue, unrealizedPnL: unrealizedPnL,
+    pnlPct: totalDeposited > 0 ? unrealizedPnL / totalDeposited * 100 : 0,
     payoutPerOutcome: payoutPerOutcome,
   };
 };
@@ -1295,6 +1359,9 @@ DualMarket.prototype.removeLiquidity = function (lpName, amount) {
 
 DualMarket.prototype.getLpPortfolios = function (lpName) {
   if (!this.initialized) return null;
+  if (lpName === '__ALL__') {
+    return { current: this.current.getAllLpPortfolio(), improved: this.improved.getAllLpPortfolio() };
+  }
   return { current: this.current.getLpPortfolio(lpName), improved: this.improved.getLpPortfolio(lpName) };
 };
 

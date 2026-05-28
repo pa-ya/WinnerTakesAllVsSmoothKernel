@@ -23,6 +23,9 @@
 <nav class="navbar">
   <div class="navbar-brand">DekantPM — Market Comparison</div>
   <div class="navbar-controls">
+    <button class="nav-btn stats-mode-btn" id="statsModeBtn" onclick="toggleStatsMode()" title="Toggle stats display: Cards / Table">
+      <span id="statsModeIcon">&#9638;</span>
+    </button>
     <button class="nav-btn" onclick="toggleTheme()" title="Toggle theme">
       <span id="themeIcon">&#9790;</span>
     </button>
@@ -331,11 +334,11 @@
     <div class="dual-stats" id="lpPreviewStats">
       <div class="stats-panel" style="border-top: 2px solid var(--purple);">
         <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">LP Preview — Current (WTA)</div>
-        <div class="result-grid" id="lpPreviewCurrentGrid"></div>
+        <div id="lpPreviewCurrentGrid"></div>
       </div>
       <div class="stats-panel" style="border-top: 2px solid var(--purple);">
         <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">LP Preview — Improved (Kernel)</div>
-        <div class="result-grid" id="lpPreviewImprovedGrid"></div>
+        <div id="lpPreviewImprovedGrid"></div>
       </div>
     </div>
     <div class="stats-panel" id="lpPreviewCombined" style="display:none;border-top:2px solid var(--purple);margin-bottom:16px;">
@@ -536,9 +539,9 @@
     </div>
     <div class="control-group">
       <label class="control-label">Theme</label>
-      <div class="btn-group">
-        <button class="btn btn-sm" onclick="setTheme('dark')">Dark</button>
-        <button class="btn btn-sm" onclick="setTheme('light')">Light</button>
+      <div class="btn-group" id="themeGroup">
+        <button class="btn btn-sm" onclick="setTheme('dark',this)">Dark</button>
+        <button class="btn btn-sm" onclick="setTheme('light',this)">Light</button>
       </div>
     </div>
     <div style="margin-top:20px; text-align:right;">
@@ -1425,6 +1428,25 @@ function resizeVisibleCharts() {
 // SETTINGS
 // ============================================================
 function openSettings() {
+  // Sync button active states with current settings
+  var fsMap = { xs: 0, sm: 1, md: 2, lg: 3, xl: 4 };
+  var fsBtns = document.querySelectorAll('#fontSizeGroup .btn');
+  fsBtns.forEach(function (b, i) { b.classList.toggle('active', i === (fsMap[settings.fontSize] || 2)); });
+
+  var nfBtns = document.querySelectorAll('#numFormatGroup .btn');
+  nfBtns.forEach(function (b) {
+    var isShort = b.textContent.indexOf('Short') >= 0;
+    b.classList.toggle('active', isShort ? settings.numberFormat === 'short' : settings.numberFormat === 'long');
+  });
+
+  var thBtns = document.querySelectorAll('#themeGroup .btn');
+  thBtns.forEach(function (b) {
+    b.classList.toggle('active', b.textContent.trim().toLowerCase() === currentTheme);
+  });
+
+  document.getElementById('precSlider').value = settings.decimalPrecision;
+  document.getElementById('precDisplay').textContent = settings.decimalPrecision;
+
   document.getElementById('settingsModal').classList.add('open');
 }
 
@@ -1452,10 +1474,13 @@ function setDecimalPrec(val) {
   saveSettings();
 }
 
-function setTheme(t) {
+function setTheme(t, btn) {
   currentTheme = t;
   applyHtmlClass();
   document.getElementById('themeIcon').textContent = t === 'dark' ? '\u263E' : '\u2600';
+  document.querySelectorAll('#themeGroup .btn').forEach(function (b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  updateAllCharts();
   saveSettings();
 }
 
@@ -1463,6 +1488,97 @@ function setTheme(t) {
 document.getElementById('settingsModal').addEventListener('click', function (e) {
   if (e.target === this) closeSettings();
 });
+
+// ============================================================
+// STATS MODE: Cards / Table
+// ============================================================
+function toggleStatsMode() {
+  settings.statsMode = settings.statsMode === 'cards' ? 'table' : 'cards';
+  document.getElementById('statsModeIcon').textContent = settings.statsMode === 'cards' ? '▦' : '▣';
+  document.getElementById('statsModeBtn').title = 'Stats display: ' + (settings.statsMode === 'cards' ? 'Cards' : 'Table');
+  applyStatsMode();
+  saveSettings();
+}
+
+function applyStatsMode() {
+  var grids = document.querySelectorAll('.result-grid');
+  for (var i = 0; i < grids.length; i++) {
+    var grid = grids[i];
+    if (settings.statsMode === 'table') {
+      convertGridToTable(grid);
+    } else {
+      restoreGridFromTable(grid);
+    }
+  }
+}
+
+function convertGridToTable(grid) {
+  var items = grid.querySelectorAll('.result-item');
+  if (items.length === 0) {
+    // Grid may already be converted (table mode) and not refreshed
+    return;
+  }
+  // Fresh card content — remove stale table-mode if present
+  grid.classList.remove('table-mode');
+
+  // Parse children into sections: each non-result-item text element starts a new section
+  var children = grid.children;
+  var sections = [];
+  var currentSection = { label: null, items: [] };
+
+  for (var c = 0; c < children.length; c++) {
+    var child = children[c];
+    if (child.classList && child.classList.contains('result-item')) {
+      currentSection.items.push({
+        label: child.querySelector('.result-label') ? child.querySelector('.result-label').textContent : '',
+        valueHtml: child.querySelector('.result-value') ? child.querySelector('.result-value').outerHTML : '',
+      });
+    } else if (child.textContent && child.textContent.trim() && !child.classList.contains('result-table-inner')) {
+      if (currentSection.items.length > 0) sections.push(currentSection);
+      currentSection = { label: child.textContent.trim(), items: [] };
+    }
+  }
+  if (currentSection.items.length > 0) sections.push(currentSection);
+  if (sections.length === 0) return;
+
+  // Store original HTML for restoring on toggle
+  grid.setAttribute('data-cards-html', grid.innerHTML);
+
+  var html = '<table class="result-table-inner">';
+
+  if (sections.length === 1 && !sections[0].label) {
+    html += '<tr>';
+    for (var i = 0; i < sections[0].items.length; i++) html += '<th>' + sections[0].items[i].label + '</th>';
+    html += '</tr><tr>';
+    for (var i = 0; i < sections[0].items.length; i++) html += '<td>' + sections[0].items[i].valueHtml + '</td>';
+    html += '</tr>';
+  } else {
+    for (var s = 0; s < sections.length; s++) {
+      var sec = sections[s];
+      html += '<tr>';
+      if (sec.label) html += '<th style="color:var(--text-heading);text-align:left;font-size:0.66rem;" colspan="1">' + sec.label + '</th>';
+      for (var i = 0; i < sec.items.length; i++) html += '<th>' + sec.items[i].label + '</th>';
+      html += '</tr><tr>';
+      if (sec.label) html += '<td></td>';
+      for (var i = 0; i < sec.items.length; i++) html += '<td>' + sec.items[i].valueHtml + '</td>';
+      html += '</tr>';
+    }
+  }
+  html += '</table>';
+
+  grid.innerHTML = html;
+  grid.classList.add('table-mode');
+}
+
+function restoreGridFromTable(grid) {
+  if (!grid.classList.contains('table-mode')) return;
+  var saved = grid.getAttribute('data-cards-html');
+  if (saved) {
+    grid.innerHTML = saved;
+    grid.removeAttribute('data-cards-html');
+  }
+  grid.classList.remove('table-mode');
+}
 
 // ============================================================
 // PHASE 2: SETUP TAB
@@ -1679,13 +1795,18 @@ function updateTraderSelectors() {
   if (lpSel) {
     var prevLp = lpSel.value;
     lpSel.innerHTML = '';
+    // "All LPs" aggregate option
+    var allOpt = document.createElement('option');
+    allOpt.value = '__ALL__';
+    allOpt.textContent = 'All LPs (aggregate)';
+    lpSel.appendChild(allOpt);
     for (var j = 0; j < lpNames.length; j++) {
       var opt2 = document.createElement('option');
       opt2.value = lpNames[j];
       opt2.textContent = lpNames[j] + (lpNames[j] === 'Creator' ? ' (initial LP)' : '');
       lpSel.appendChild(opt2);
     }
-    if (prevLp && lpNames.indexOf(prevLp) >= 0) lpSel.value = prevLp;
+    if (prevLp && (lpNames.indexOf(prevLp) >= 0 || prevLp === '__ALL__')) lpSel.value = prevLp;
   }
 }
 
@@ -1914,6 +2035,7 @@ function refreshDistCharts() {
   refreshCombinedDistChart();
   updateDistPreview();
   refreshCombinedDistStats(traderName);
+  applyStatsMode();
 }
 
 function refreshDistStats(traderName) {
@@ -2088,6 +2210,7 @@ function updatePreviewStats() {
       );
     }
   }
+  applyStatsMode();
 }
 
 function buildPreviewStatsHtml(stats, labels) {
@@ -2202,6 +2325,7 @@ function refreshLpTab() {
   refreshLpCombinedTraderStats(lpName);
   updateLpPreview();
   if (chartMode === 'combined') refreshLpCombinedStats(lpName);
+  applyStatsMode();
 }
 
 // --- LP Payout Chart: shows LP payout at each resolution outcome ---
@@ -2524,6 +2648,15 @@ function updateLpPreview() {
   var amount = parseFloat(document.getElementById('lpAmount').value);
   if (!lpName || isNaN(amount) || amount <= 0) return;
 
+  // Hide preview for aggregate view
+  if (lpName === '__ALL__') {
+    var sp = document.getElementById('lpPreviewStats');
+    var cp = document.getElementById('lpPreviewCombined');
+    if (sp) sp.style.display = 'none';
+    if (cp) cp.style.display = 'none';
+    return;
+  }
+
   var cHasLp = dualMarket.current.lpProviders[lpName] && dualMarket.current.lpProviders[lpName].shares > 0;
 
   // Show add preview by default, remove preview if they have LP
@@ -2536,13 +2669,13 @@ function updateLpPreview() {
   var cGrid = document.getElementById('lpPreviewCurrentGrid');
   var iGrid = document.getElementById('lpPreviewImprovedGrid');
   if (cGrid) {
-    var html = '<div style="margin-bottom:6px;font-size:0.7rem;color:var(--success);font-weight:600;">Add Preview</div>' + lpPreviewHtml(cAddP, 'add');
-    if (cRemP) html += '<div style="margin-top:8px;margin-bottom:6px;font-size:0.7rem;color:var(--danger);font-weight:600;">Remove Preview</div>' + lpPreviewHtml(cRemP, 'remove');
+    var html = '<div class="lp-preview-section"><div class="lp-preview-label" style="color:var(--success);">Add Preview</div><div class="result-grid">' + lpPreviewHtml(cAddP, 'add') + '</div></div>';
+    if (cRemP) html += '<div class="lp-preview-section"><div class="lp-preview-label" style="color:var(--danger);">Remove Preview</div><div class="result-grid">' + lpPreviewHtml(cRemP, 'remove') + '</div></div>';
     cGrid.innerHTML = html;
   }
   if (iGrid) {
-    var html2 = '<div style="margin-bottom:6px;font-size:0.7rem;color:var(--success);font-weight:600;">Add Preview</div>' + lpPreviewHtml(iAddP, 'add');
-    if (iRemP) html2 += '<div style="margin-top:8px;margin-bottom:6px;font-size:0.7rem;color:var(--danger);font-weight:600;">Remove Preview</div>' + lpPreviewHtml(iRemP, 'remove');
+    var html2 = '<div class="lp-preview-section"><div class="lp-preview-label" style="color:var(--success);">Add Preview</div><div class="result-grid">' + lpPreviewHtml(iAddP, 'add') + '</div></div>';
+    if (iRemP) html2 += '<div class="lp-preview-section"><div class="lp-preview-label" style="color:var(--danger);">Remove Preview</div><div class="result-grid">' + lpPreviewHtml(iRemP, 'remove') + '</div></div>';
     iGrid.innerHTML = html2;
   }
 
@@ -2580,6 +2713,7 @@ function executeLp(action) {
   if (!dualMarket || !dualMarket.initialized) return showToast('Create a market first', 'error');
   var lpName = document.getElementById('lpTraderSelect').value;
   if (!lpName) return showToast('Select an LP', 'error');
+  if (lpName === '__ALL__') return showToast('Select a specific LP to add/remove', 'error');
   var result;
 
   if (action === 'removeAll') {
@@ -2621,7 +2755,7 @@ function refreshLpCombinedTraderStats(lpName) {
     return;
   }
 
-  var traderP = dualMarket.getPortfolios(lpName);
+  var traderP = lpName !== '__ALL__' ? dualMarket.getPortfolios(lpName) : null;
   var lpP = dualMarket.getLpPortfolios(lpName);
 
   function combinedHtml(tp, lp, engine) {
@@ -2823,10 +2957,15 @@ function runLpSimulation() {
 
 // LP tab event listeners
 document.getElementById('lpTraderSelect').addEventListener('change', function () {
+  var isAll = this.value === '__ALL__';
+  var btns = document.querySelectorAll('#lpControls .btn');
+  for (var i = 0; i < btns.length; i++) btns[i].disabled = isAll;
+  document.getElementById('lpAmount').disabled = isAll;
   refreshLpTab();
 });
 document.getElementById('lpAmount').addEventListener('input', function () {
   updateLpPreview();
+  applyStatsMode();
 });
 document.getElementById('lpSimTraderCount').addEventListener('input', function () {
   document.getElementById('lpSimTraderCountLabel').textContent = '(' + this.value + ')';
@@ -2878,6 +3017,7 @@ function resolveMarket() {
 
   // Apply winning bin markers on trading charts
   applyResolutionMarkers();
+  applyStatsMode();
 
   var label = dualMarket.current.getLabels()[result.current.winningBin] || result.current.winningBin;
   showToast('Resolved at ' + value.toFixed(1) + ' \u2192 bin ' + result.current.winningBin + ' (' + label + ')', 'resolve');
@@ -3063,6 +3203,12 @@ function applyResolutionMarkers() {
   // Render persisted traders
   renderTraderList();
   updateTraderSelectors();
+
+  // Apply stats mode from saved settings
+  var smIcon = document.getElementById('statsModeIcon');
+  var smBtn = document.getElementById('statsModeBtn');
+  if (smIcon) smIcon.textContent = settings.statsMode === 'cards' ? '▦' : '▣';
+  if (smBtn) smBtn.title = 'Stats display: ' + (settings.statsMode === 'cards' ? 'Cards' : 'Table');
 })();
 </script>
 </body>

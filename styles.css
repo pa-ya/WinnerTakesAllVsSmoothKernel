@@ -397,6 +397,13 @@ select.control-input { cursor: pointer; }
   font-size: 0.75rem;
 }
 
+.btn-sm.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  box-shadow: 0 0 8px var(--primary-glow);
+}
+
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -682,6 +689,46 @@ select.control-input { cursor: pointer; }
 
 .result-value.positive { color: var(--success); }
 .result-value.negative { color: var(--danger); }
+
+/* Table mode for result-grids */
+.result-grid.table-mode {
+  display: block;
+  overflow-x: auto;
+}
+
+.result-grid.table-mode .result-table-inner {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.result-grid.table-mode .result-table-inner th {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  padding: 5px 10px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.result-grid.table-mode .result-table-inner td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-align: center;
+  color: var(--primary-light);
+  white-space: nowrap;
+}
+
+.stats-mode-btn {
+  font-size: 1rem;
+}
 
 /* Comparison stats table (combined mode) */
 .comparison-table {
@@ -976,6 +1023,22 @@ select.control-input { cursor: pointer; }
 
 #tab-lp > .collapsible-title:first-of-type {
   margin-top: 16px;
+}
+
+.lp-preview-section {
+  margin-bottom: 10px;
+}
+
+.lp-preview-section:last-child {
+  margin-bottom: 0;
+}
+
+.lp-preview-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 /* ============================================================
