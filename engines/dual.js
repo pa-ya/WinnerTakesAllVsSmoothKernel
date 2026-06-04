@@ -1,22 +1,23 @@
 // ============================================================
 // DekantPM Comparison — DualMarket orchestrator
 // ============================================================
-// Loaded after l2.js + lmsr.js. Wraps both engines (current=LMSR left,
-// improved=L2-norm right) and applies every action to both with isolated wallets.
+// Loaded after l2.js + lmsr.js. Wraps both engines (lmsr = LMSR-family engine,
+// UI left; l2 = L2-norm engine, UI right) and applies every action to both
+// with isolated wallets.
 'use strict';
 
 // ============================================================
 // 9. DUAL MARKET ORCHESTRATOR
 // ============================================================
-// Wraps the LMSR engine (current slot, UI left) + L2-norm engine (improved
-// slot, UI right). Every action is applied to both engines with separate
+// Wraps the LMSR-family engine (this.lmsr, UI left) + L2-norm engine
+// (this.l2, UI right). Every action is applied to both engines with separate
 // wallet snapshots. Because the two AMMs differ, holdings/positions diverge
 // by design — only the smooth-kernel settlement is shared.
 // ============================================================
 function DualMarket() {
-  this.current = null;   // LmsrMarket
-  this.improved = null;  // L2Market
-  this.traders = {};     // { name: { currentWallet, improvedWallet, initialBalance } }
+  this.lmsr = null;   // LmsrMarket (mode: 'lmsr' or 'lslmsr')
+  this.l2 = null;     // L2Market
+  this.traders = {};     // { name: { lmsrWallet, l2Wallet, initialBalance } }
   this.initialized = false;
 }
 
@@ -29,11 +30,11 @@ DualMarket.prototype.init = function (N, rangeMin, rangeMax, liquidity, fees, ke
     kernelWidth: kw,
   };
 
-  this.current = new LmsrMarket(N, rangeMin, rangeMax, liquidity, f);   // LMSR smooth kernel (left)
-  this.improved = new L2Market(N, rangeMin, rangeMax, liquidity, f);    // L2-norm smooth kernel (right)
+  this.lmsr = new LmsrMarket(N, rangeMin, rangeMax, liquidity, f);   // LMSR smooth kernel (left)
+  this.l2 = new L2Market(N, rangeMin, rangeMax, liquidity, f);    // L2-norm smooth kernel (right)
 
   this.traders = {};
-  this.traders['Creator'] = { currentWallet: 0, improvedWallet: 0, initialBalance: liquidity };
+  this.traders['Creator'] = { lmsrWallet: 0, l2Wallet: 0, initialBalance: liquidity };
   globalTraders = {};
   this.initialized = true;
   this.initConfig = {
@@ -42,24 +43,24 @@ DualMarket.prototype.init = function (N, rangeMin, rangeMax, liquidity, fees, ke
     kernelWidth: kw,
   };
 
-  return { current: this.current, improved: this.improved };
+  return { lmsr: this.lmsr, l2: this.l2 };
 };
 
 DualMarket.prototype.addTrader = function (name, balance) {
   if (!this.initialized) return { error: 'Market not initialized' };
   if (this.traders[name]) return { error: 'Trader already exists: ' + name };
 
-  this.traders[name] = { currentWallet: balance, improvedWallet: balance, initialBalance: balance };
+  this.traders[name] = { lmsrWallet: balance, l2Wallet: balance, initialBalance: balance };
   return { name: name, balance: balance };
 };
 
 DualMarket.prototype._setWallets = function (traderName, engine) {
   var t = this.traders[traderName];
   if (!t) return false;
-  if (engine === 'current') {
-    globalTraders[traderName] = { wallet: t.currentWallet };
+  if (engine === 'lmsr') {
+    globalTraders[traderName] = { wallet: t.lmsrWallet };
   } else {
-    globalTraders[traderName] = { wallet: t.improvedWallet };
+    globalTraders[traderName] = { wallet: t.l2Wallet };
   }
   return true;
 };
@@ -67,10 +68,10 @@ DualMarket.prototype._setWallets = function (traderName, engine) {
 DualMarket.prototype._saveWallet = function (traderName, engine) {
   var t = this.traders[traderName];
   if (!t || !globalTraders[traderName]) return;
-  if (engine === 'current') {
-    t.currentWallet = globalTraders[traderName].wallet;
+  if (engine === 'lmsr') {
+    t.lmsrWallet = globalTraders[traderName].wallet;
   } else {
-    t.improvedWallet = globalTraders[traderName].wallet;
+    t.l2Wallet = globalTraders[traderName].wallet;
   }
 };
 
@@ -78,27 +79,27 @@ DualMarket.prototype._dualTrade = function (method, traderName, args) {
   if (!this.initialized) return { error: 'Market not initialized' };
   if (!this.traders[traderName]) return { error: 'Unknown trader: ' + traderName };
 
-  // Execute on current (LMSR) engine
-  this._setWallets(traderName, 'current');
-  var currentResult = this.current[method].apply(this.current, [traderName].concat(args));
+  // Execute on the LMSR-family engine (this.lmsr)
+  this._setWallets(traderName, 'lmsr');
+  var lmsrResult = this.lmsr[method].apply(this.lmsr, [traderName].concat(args));
 
-  if (currentResult.error) {
-    return { error: 'LMSR engine: ' + currentResult.error, current: currentResult, improved: null };
+  if (lmsrResult.error) {
+    return { error: 'LMSR engine: ' + lmsrResult.error, lmsr: lmsrResult, l2: null };
   }
-  this._saveWallet(traderName, 'current');
+  this._saveWallet(traderName, 'lmsr');
 
-  // Execute on improved (L2-norm) engine
-  this._setWallets(traderName, 'improved');
-  var improvedResult = this.improved[method].apply(this.improved, [traderName].concat(args));
+  // Execute on the L2-norm engine (this.l2)
+  this._setWallets(traderName, 'l2');
+  var l2Result = this.l2[method].apply(this.l2, [traderName].concat(args));
 
-  if (improvedResult.error) {
+  if (l2Result.error) {
     // The two AMMs hold different holdings, so a sell that succeeds on one engine
     // may have nothing to sell on the other. Log and continue (left engine stands).
-    console.warn('Dual trade divergence: LMSR succeeded but L2-norm failed:', improvedResult.error);
+    console.warn('Dual trade divergence: LMSR succeeded but L2-norm failed:', l2Result.error);
   }
-  this._saveWallet(traderName, 'improved');
+  this._saveWallet(traderName, 'l2');
 
-  return { current: currentResult, improved: improvedResult };
+  return { lmsr: lmsrResult, l2: l2Result };
 };
 
 DualMarket.prototype.discreteBuy = function (traderName, binIdx, amount) {
@@ -121,52 +122,52 @@ DualMarket.prototype.sellAll = function (traderName) {
   if (!this.initialized) return { error: 'Market not initialized' };
   if (!this.traders[traderName]) return { error: 'Unknown trader: ' + traderName };
 
-  this._setWallets(traderName, 'current');
-  var currentResult = this.current.sellAll(traderName);
-  if (currentResult.error) {
-    return { error: currentResult.error, current: currentResult, improved: null };
+  this._setWallets(traderName, 'lmsr');
+  var lmsrResult = this.lmsr.sellAll(traderName);
+  if (lmsrResult.error) {
+    return { error: lmsrResult.error, lmsr: lmsrResult, l2: null };
   }
-  this._saveWallet(traderName, 'current');
+  this._saveWallet(traderName, 'lmsr');
 
-  this._setWallets(traderName, 'improved');
-  var improvedResult = this.improved.sellAll(traderName);
-  this._saveWallet(traderName, 'improved');
+  this._setWallets(traderName, 'l2');
+  var l2Result = this.l2.sellAll(traderName);
+  this._saveWallet(traderName, 'l2');
 
-  return { current: currentResult, improved: improvedResult };
+  return { lmsr: lmsrResult, l2: l2Result };
 };
 
 DualMarket.prototype.resolve = function (value) {
   if (!this.initialized) return { error: 'Market not initialized' };
 
   for (var name in this.traders) {
-    this._setWallets(name, 'current');
+    this._setWallets(name, 'lmsr');
   }
-  var currentResult = this.current.resolve(value);
+  var lmsrResult = this.lmsr.resolve(value);
 
   for (var name in this.traders) {
-    this._setWallets(name, 'improved');
+    this._setWallets(name, 'l2');
   }
-  var improvedResult = this.improved.resolve(value);
+  var l2Result = this.l2.resolve(value);
 
-  return { current: currentResult, improved: improvedResult };
+  return { lmsr: lmsrResult, l2: l2Result };
 };
 
 DualMarket.prototype.getPortfolios = function (traderName) {
   if (!this.initialized || !this.traders[traderName]) return null;
 
-  this._setWallets(traderName, 'current');
-  var currentPortfolio = this.current.getTraderPortfolio(traderName);
+  this._setWallets(traderName, 'lmsr');
+  var lmsrPortfolio = this.lmsr.getTraderPortfolio(traderName);
 
-  this._setWallets(traderName, 'improved');
-  var improvedPortfolio = this.improved.getTraderPortfolio(traderName);
+  this._setWallets(traderName, 'l2');
+  var l2Portfolio = this.l2.getTraderPortfolio(traderName);
 
-  return { current: currentPortfolio, improved: improvedPortfolio };
+  return { lmsr: lmsrPortfolio, l2: l2Portfolio };
 };
 
 DualMarket.prototype.getTraderBalance = function (traderName) {
   var t = this.traders[traderName];
   if (!t) return null;
-  return { current: t.currentWallet, improved: t.improvedWallet };
+  return { lmsr: t.lmsrWallet, l2: t.l2Wallet };
 };
 
 // Report cross-engine divergence (the two AMMs are expected to diverge — this is
@@ -174,16 +175,16 @@ DualMarket.prototype.getTraderBalance = function (traderName) {
 // absolute difference in displayed probabilities.
 DualMarket.prototype.verifySync = function () {
   if (!this.initialized) return { synced: false, error: 'Not initialized' };
-  var cp = this.current.getProbabilities();
-  var ip = this.improved.getProbabilities();
+  var cp = this.lmsr.getProbabilities();
+  var ip = this.l2.getProbabilities();
   var maxProbDiff = 0;
-  for (var j = 0; j < this.current.N; j++) {
+  for (var j = 0; j < this.lmsr.N; j++) {
     var diff = Math.abs(cp[j] - ip[j]);
     if (diff > maxProbDiff) maxProbDiff = diff;
   }
   return {
-    lmsrPool: this.current.getPool(),
-    l2Pool: this.improved.getPool(),
+    lmsrPool: this.lmsr.getPool(),
+    l2Pool: this.l2.getPool(),
     maxProbDiff: maxProbDiff,
   };
 };
@@ -192,32 +193,32 @@ DualMarket.prototype.addLiquidity = function (lpName, amount) {
   if (!this.initialized) return { error: 'Market not initialized' };
   if (!this.traders[lpName]) return { error: 'Unknown user: ' + lpName };
 
-  this._setWallets(lpName, 'current');
-  var currentResult = this.current.addLiquidity(lpName, amount);
-  if (currentResult.error) return { error: currentResult.error, current: currentResult, improved: null };
-  this._saveWallet(lpName, 'current');
+  this._setWallets(lpName, 'lmsr');
+  var lmsrResult = this.lmsr.addLiquidity(lpName, amount);
+  if (lmsrResult.error) return { error: lmsrResult.error, lmsr: lmsrResult, l2: null };
+  this._saveWallet(lpName, 'lmsr');
 
-  this._setWallets(lpName, 'improved');
-  var improvedResult = this.improved.addLiquidity(lpName, amount);
-  this._saveWallet(lpName, 'improved');
+  this._setWallets(lpName, 'l2');
+  var l2Result = this.l2.addLiquidity(lpName, amount);
+  this._saveWallet(lpName, 'l2');
 
-  return { current: currentResult, improved: improvedResult };
+  return { lmsr: lmsrResult, l2: l2Result };
 };
 
 DualMarket.prototype.removeLiquidity = function (lpName, amount) {
   if (!this.initialized) return { error: 'Market not initialized' };
   if (!this.traders[lpName]) return { error: 'Unknown user: ' + lpName };
 
-  this._setWallets(lpName, 'current');
-  var currentResult = this.current.removeLiquidity(lpName, amount);
-  if (currentResult.error) return { error: currentResult.error, current: currentResult, improved: null };
-  this._saveWallet(lpName, 'current');
+  this._setWallets(lpName, 'lmsr');
+  var lmsrResult = this.lmsr.removeLiquidity(lpName, amount);
+  if (lmsrResult.error) return { error: lmsrResult.error, lmsr: lmsrResult, l2: null };
+  this._saveWallet(lpName, 'lmsr');
 
-  this._setWallets(lpName, 'improved');
-  var improvedResult = this.improved.removeLiquidity(lpName, amount);
-  this._saveWallet(lpName, 'improved');
+  this._setWallets(lpName, 'l2');
+  var l2Result = this.l2.removeLiquidity(lpName, amount);
+  this._saveWallet(lpName, 'l2');
 
-  return { current: currentResult, improved: improvedResult };
+  return { lmsr: lmsrResult, l2: l2Result };
 };
 
 // --- Serialization (Save/Load) ---
@@ -225,8 +226,8 @@ DualMarket.prototype.serialize = function () {
   return JSON.stringify({
     initConfig: this.initConfig,
     traders: this.traders,
-    current: this.current.getState(),
-    improved: this.improved.getState(),
+    lmsr: this.lmsr.getState(),
+    l2: this.l2.getState(),
   });
 };
 
@@ -235,8 +236,8 @@ DualMarket.loadFromSave = function (json) {
   var c = d.initConfig;
   var dm = new DualMarket();
   dm.init(c.N, c.rangeMin, c.rangeMax, c.liquidity, c.fees, c.kernelWidth);
-  dm.current.loadState(d.current);
-  dm.improved.loadState(d.improved);
+  dm.lmsr.loadState(d.lmsr);
+  dm.l2.loadState(d.l2);
   dm.traders = d.traders;
   return dm;
 };
@@ -244,8 +245,8 @@ DualMarket.loadFromSave = function (json) {
 DualMarket.prototype.getLpPortfolios = function (lpName) {
   if (!this.initialized) return null;
   if (lpName === '__ALL__') {
-    return { current: this.current.getAllLpPortfolio(), improved: this.improved.getAllLpPortfolio() };
+    return { lmsr: this.lmsr.getAllLpPortfolio(), l2: this.l2.getAllLpPortfolio() };
   }
-  return { current: this.current.getLpPortfolio(lpName), improved: this.improved.getLpPortfolio(lpName) };
+  return { lmsr: this.lmsr.getLpPortfolio(lpName), l2: this.l2.getLpPortfolio(lpName) };
 };
 

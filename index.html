@@ -1173,31 +1173,31 @@ function buildCombinedDistChartConfig(labels, cProbs, iProbs, holdings, cPreview
 
 // --- P6-1: Init combined charts ---
 function initCombinedDistChart() {
-  if (!dualMarket || !dualMarket.current) return;
-  var labels = dualMarket.current.getLabels();
-  var cProbs = dualMarket.current.getProbabilities();
-  var iProbs = dualMarket.improved.getProbabilities();
+  if (!dualMarket || !dualMarket.lmsr) return;
+  var labels = dualMarket.lmsr.getLabels();
+  var cProbs = dualMarket.lmsr.getProbabilities();
+  var iProbs = dualMarket.l2.getProbabilities();
   var empty = [];
-  for (var j = 0; j < dualMarket.current.N; j++) empty.push(0);
-  var uniformProb = 1 / dualMarket.current.N;
+  for (var j = 0; j < dualMarket.lmsr.N; j++) empty.push(0);
+  var uniformProb = 1 / dualMarket.lmsr.N;
   getOrCreateChart('distCombinedChart', buildCombinedDistChartConfig(labels, cProbs, iProbs, empty, empty.slice(), empty.slice(), uniformProb));
   attachChartInteraction('distCombinedChart');
 }
 
 // --- P6-1: Refresh combined charts ---
 function refreshCombinedDistChart() {
-  if (!dualMarket || !dualMarket.current) return;
+  if (!dualMarket || !dualMarket.lmsr) return;
   var chart = charts['distCombinedChart'];
   if (!chart) return;
 
-  var cProbs = dualMarket.current.getProbabilities();
-  var iProbs = dualMarket.improved.getProbabilities();
+  var cProbs = dualMarket.lmsr.getProbabilities();
+  var iProbs = dualMarket.l2.getProbabilities();
 
   var traderName = document.getElementById('distTraderSelect').value;
   var holdings = [];
-  for (var j = 0; j < dualMarket.current.N; j++) holdings.push(0);
+  for (var j = 0; j < dualMarket.lmsr.N; j++) holdings.push(0);
   if (traderName) {
-    var cTh = dualMarket.current.traderHoldings[traderName];
+    var cTh = dualMarket.lmsr.traderHoldings[traderName];
     if (cTh) holdings = cTh.holdings.slice();
   }
 
@@ -1211,12 +1211,12 @@ function refreshCombinedDistChart() {
 }
 
 function updateCombinedDistPreview(cPreviewArg, iPreviewArg) {
-  if (!dualMarket || !dualMarket.current) return;
+  if (!dualMarket || !dualMarket.lmsr) return;
   var chart = charts['distCombinedChart'];
   if (!chart) return;
 
   var empty = [];
-  for (var j = 0; j < dualMarket.current.N; j++) empty.push(0);
+  for (var j = 0; j < dualMarket.lmsr.N; j++) empty.push(0);
 
   var cPreview = cPreviewArg, iPreview = iPreviewArg;
   if (cPreview === undefined) {
@@ -1224,8 +1224,8 @@ function updateCombinedDistPreview(cPreviewArg, iPreviewArg) {
     var sigma = getDistSigma();
     var amount = parseFloat(document.getElementById('distAmount').value);
     if (sigma && sigma > 0 && amount > 0) {
-      cPreview = computeDistPreview(dualMarket.current, mu, sigma, amount);
-      iPreview = computeDistPreview(dualMarket.improved, mu, sigma, amount);
+      cPreview = computeDistPreview(dualMarket.lmsr, mu, sigma, amount);
+      iPreview = computeDistPreview(dualMarket.l2, mu, sigma, amount);
     }
   }
 
@@ -1301,10 +1301,10 @@ function getXValueFromPixel(chart, pixelX) {
   var xScale = chart.scales.x;
   if (!xScale) return null;
   var idx = xScale.getValueForPixel(pixelX);
-  if (idx == null || !dualMarket || !dualMarket.current) return null;
+  if (idx == null || !dualMarket || !dualMarket.lmsr) return null;
   var binIdx = Math.round(idx);
-  binIdx = Math.max(0, Math.min(dualMarket.current.N - 1, binIdx));
-  return dualMarket.current.centers[binIdx];
+  binIdx = Math.max(0, Math.min(dualMarket.lmsr.N - 1, binIdx));
+  return dualMarket.lmsr.centers[binIdx];
 }
 
 function getConfFromPixelY(chart, pixelY) {
@@ -1387,9 +1387,9 @@ function chartInteractionMouseUp(e, chart) {
 }
 
 function setMuFromChart(mu) {
-  if (!dualMarket || !dualMarket.current) return;
-  var min = dualMarket.current.rangeMin;
-  var max = dualMarket.current.rangeMax;
+  if (!dualMarket || !dualMarket.lmsr) return;
+  var min = dualMarket.lmsr.rangeMin;
+  var max = dualMarket.lmsr.rangeMax;
   mu = Math.max(min, Math.min(max, mu));
   var sl = document.getElementById('distMuSlider');
   sl.value = mu;
@@ -1400,9 +1400,9 @@ function setMuFromChart(mu) {
 }
 
 function setMuConfFromChart(mu, conf) {
-  if (!dualMarket || !dualMarket.current) return;
-  var min = dualMarket.current.rangeMin;
-  var max = dualMarket.current.rangeMax;
+  if (!dualMarket || !dualMarket.lmsr) return;
+  var min = dualMarket.lmsr.rangeMin;
+  var max = dualMarket.lmsr.rangeMax;
   mu = Math.max(min, Math.min(max, mu));
   var muSl = document.getElementById('distMuSlider');
   muSl.value = mu;
@@ -1447,7 +1447,7 @@ function attachChartInteraction(chartId) {
 
 // --- P6-3: Combined stats (comparison table with delta column) ---
 function refreshCombinedDistStats(traderName) {
-  if (!dualMarket || !dualMarket.current) return;
+  if (!dualMarket || !dualMarket.lmsr) return;
   var table = document.getElementById('distComparisonTable');
   if (!table) return;
 
@@ -1458,15 +1458,15 @@ function refreshCombinedDistStats(traderName) {
 
   var portfolios = dualMarket.getPortfolios(traderName);
   if (!portfolios) return;
-  var cp = portfolios.current;
-  var ip = portfolios.improved;
+  var cp = portfolios.lmsr;
+  var ip = portfolios.l2;
 
   table.innerHTML = buildComparisonTableHtml(cp, ip);
 }
 
 function buildComparisonTableHtml(cp, ip) {
   var rows = [
-    { label: 'Vault', c: dualMarket.current.getPool(), i: dualMarket.improved.getPool(), style: '' },
+    { label: 'Vault', c: dualMarket.lmsr.getPool(), i: dualMarket.l2.getPool(), style: '' },
     { label: 'Wallet', c: cp.wallet, i: ip.wallet, style: '' },
     { label: 'Holdings', c: cp.totalHoldings, i: ip.totalHoldings, style: '' },
     { label: 'E[Payout]', c: cp.expectedPayout, i: ip.expectedPayout, style: '' },
@@ -1618,8 +1618,8 @@ function refreshAllDisplayedStats() {
   refreshLpCombinedTraderStats(lpName);
   updateLpPreview();
   if (chartMode === 'combined') refreshLpCombinedStats(lpName);
-  if (dualMarket.current.resolved && lastResolveResult) {
-    renderResolveSummary(lastResolveResult, dualMarket.current.lastResolveValue);
+  if (dualMarket.lmsr.resolved && lastResolveResult) {
+    renderResolveSummary(lastResolveResult, dualMarket.lmsr.lastResolveValue);
     renderPayoutTable(lastResolveResult);
     renderCombinedPayoutTable(lastResolveResult);
   }
@@ -1968,8 +1968,8 @@ function topUpTrader(name) {
     if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
     var t = dualMarket.traders[name];
     if (!t) return;
-    t.currentWallet += amount;
-    t.improvedWallet += amount;
+    t.lmsrWallet += amount;
+    t.l2Wallet += amount;
     for (var i = 0; i < traderRegistry.length; i++) {
       if (traderRegistry[i].name === name) {
         traderRegistry[i].balance += amount;
@@ -1996,7 +1996,7 @@ function renderTraderList() {
     var walletInfo = '';
     if (dualMarket && dualMarket.initialized && dualMarket.traders[n]) {
       var t = dualMarket.traders[n];
-      walletInfo = 'C: $' + formatCompact(t.currentWallet) + ' | I: $' + formatCompact(t.improvedWallet);
+      walletInfo = 'C: $' + formatCompact(t.lmsrWallet) + ' | I: $' + formatCompact(t.l2Wallet);
     } else {
       walletInfo = 'Balance: $' + formatCompact(reg.balance);
     }
@@ -2050,16 +2050,16 @@ function updateTraderSelectors() {
 // INPUT SYNC HELPERS
 // ============================================================
 function getDistSigma() {
-  if (!dualMarket || !dualMarket.current) return null;
-  var range = dualMarket.current.rangeMax - dualMarket.current.rangeMin;
+  if (!dualMarket || !dualMarket.lmsr) return null;
+  var range = dualMarket.lmsr.rangeMax - dualMarket.lmsr.rangeMin;
   var conf = parseInt(document.getElementById('distConfSlider').value, 10);
   var maxSigma = range / 2;
-  var minSigma = range / (dualMarket.current.N * 2);
+  var minSigma = range / (dualMarket.lmsr.N * 2);
   return maxSigma - (conf / 100) * (maxSigma - minSigma);
 }
 
 function updateDistLabels() {
-  if (!dualMarket || !dualMarket.current) return;
+  if (!dualMarket || !dualMarket.lmsr) return;
   var mu = parseFloat(document.getElementById('distMuSlider').value);
   var el = document.getElementById('distMuLabel');
   if (el) el.textContent = '(' + mu.toFixed(1) + ')';
@@ -2091,8 +2091,8 @@ document.addEventListener('input', function (e) {
 var _previewRAF = 0;
 var _debouncedPreview60 = debounce(function () { updateDistPreview(); }, 60);
 function schedulePreview() {
-  if (!dualMarket || !dualMarket.current) return;
-  var N = dualMarket.current.N;
+  if (!dualMarket || !dualMarket.lmsr) return;
+  var N = dualMarket.lmsr.N;
   if (N < 128) { updateDistPreview(); return; }
   if (N >= 512) { _debouncedPreview60(); return; }
   if (_previewRAF) cancelAnimationFrame(_previewRAF);
@@ -2142,7 +2142,7 @@ document.getElementById('resolveInput').addEventListener('input', function () {
 // ============================================================
 function buildDistChartConfig(labels, probData, posData, previewData, colorScheme) {
   var colors = getChartColors();
-  var probColor = colorScheme === 'improved' ? colors.accent : colors.primary;
+  var probColor = colorScheme === 'l2' ? colors.accent : colors.primary;
   var posColor = colors.warning;
   var large = isLargeMarket();
   return {
@@ -2237,41 +2237,41 @@ function buildDistChartConfig(labels, probData, posData, previewData, colorSchem
 }
 
 function initDistCharts() {
-  if (!dualMarket || !dualMarket.current) return;
-  var labels = dualMarket.current.getLabels();
-  var cProbs = dualMarket.current.getProbabilities();
-  var iProbs = dualMarket.improved.getProbabilities();
+  if (!dualMarket || !dualMarket.lmsr) return;
+  var labels = dualMarket.lmsr.getLabels();
+  var cProbs = dualMarket.lmsr.getProbabilities();
+  var iProbs = dualMarket.l2.getProbabilities();
   var empty = [];
-  for (var j = 0; j < dualMarket.current.N; j++) empty.push(0);
+  for (var j = 0; j < dualMarket.lmsr.N; j++) empty.push(0);
 
-  getOrCreateChart('distCurrentChart', buildDistChartConfig(labels, cProbs, empty.slice(), empty.slice(), 'current'));
-  getOrCreateChart('distImprovedChart', buildDistChartConfig(labels, iProbs, empty.slice(), empty.slice(), 'improved'));
+  getOrCreateChart('distCurrentChart', buildDistChartConfig(labels, cProbs, empty.slice(), empty.slice(), 'lmsr'));
+  getOrCreateChart('distImprovedChart', buildDistChartConfig(labels, iProbs, empty.slice(), empty.slice(), 'l2'));
   attachChartInteraction('distCurrentChart');
   attachChartInteraction('distImprovedChart');
 }
 
 function refreshDistCharts() {
-  if (!dualMarket || !dualMarket.current) return;
+  if (!dualMarket || !dualMarket.lmsr) return;
 
   var traderName = document.getElementById('distTraderSelect').value;
-  var cProbs = dualMarket.current.getProbabilities();
-  var iProbs = dualMarket.improved.getProbabilities();
+  var cProbs = dualMarket.lmsr.getProbabilities();
+  var iProbs = dualMarket.l2.getProbabilities();
 
   var cHoldings = [], iHoldings = [];
-  for (var j = 0; j < dualMarket.current.N; j++) {
+  for (var j = 0; j < dualMarket.lmsr.N; j++) {
     cHoldings.push(0);
     iHoldings.push(0);
   }
   if (traderName) {
-    var cTh = dualMarket.current.traderHoldings[traderName];
-    var iTh = dualMarket.improved.traderHoldings[traderName];
+    var cTh = dualMarket.lmsr.traderHoldings[traderName];
+    var iTh = dualMarket.l2.traderHoldings[traderName];
     if (cTh) cHoldings = cTh.holdings.slice();
     if (iTh) iHoldings = iTh.holdings.slice();
   }
 
   // Zero out preview to avoid stale flicker before updateDistPreview re-fills it
   var empty = [];
-  for (var e = 0; e < dualMarket.current.N; e++) empty.push(0);
+  for (var e = 0; e < dualMarket.lmsr.N; e++) empty.push(0);
 
   if (chartMode === 'combined') {
     refreshCombinedDistChart();
@@ -2301,7 +2301,7 @@ function refreshDistCharts() {
 }
 
 function refreshDistStats(traderName) {
-  if (!dualMarket || !dualMarket.current) return;
+  if (!dualMarket || !dualMarket.lmsr) return;
 
   var cGrid = document.getElementById('distStatsCurrentGrid');
   var iGrid = document.getElementById('distStatsImprovedGrid');
@@ -2316,11 +2316,11 @@ function refreshDistStats(traderName) {
   var portfolios = dualMarket.getPortfolios(traderName);
   if (!portfolios) return;
 
-  var cp = portfolios.current;
-  var ip = portfolios.improved;
+  var cp = portfolios.lmsr;
+  var ip = portfolios.l2;
 
   function statsHtml(p, engine) {
-    var k = engine === 'current' ? dualMarket.current.getPool() : dualMarket.improved.getPool();
+    var k = engine === 'lmsr' ? dualMarket.lmsr.getPool() : dualMarket.l2.getPool();
     var pnlClass = p.unrealizedPnL >= 0 ? 'positive' : 'negative';
     var epClass = p.expectedPayout > p.totalSpent ? 'positive' : (p.expectedPayout < p.totalSpent && p.totalSpent > 0 ? 'negative' : '');
     return '' +
@@ -2334,8 +2334,8 @@ function refreshDistStats(traderName) {
       '<div class="result-item"><div class="result-label">Unreal. PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(p.unrealizedPnL) + '</div></div>';
   }
 
-  if (cGrid) cGrid.innerHTML = statsHtml(cp, 'current');
-  if (iGrid) iGrid.innerHTML = statsHtml(ip, 'improved');
+  if (cGrid) cGrid.innerHTML = statsHtml(cp, 'lmsr');
+  if (iGrid) iGrid.innerHTML = statsHtml(ip, 'l2');
 }
 
 // Non-mutating preview that matches the engine's real distributionBuy exactly
@@ -2346,7 +2346,7 @@ function computeDistPreview(engine, mu, sigma, amount) {
 }
 
 function updateDistPreview() {
-  if (!dualMarket || !dualMarket.current) return;
+  if (!dualMarket || !dualMarket.lmsr) return;
 
   var mu = parseFloat(document.getElementById('distMuSlider').value);
   var sigma = getDistSigma();
@@ -2354,12 +2354,12 @@ function updateDistPreview() {
 
   var cPreview = null, iPreview = null;
   if (sigma && sigma > 0 && amount > 0) {
-    cPreview = computeDistPreview(dualMarket.current, mu, sigma, amount);
-    iPreview = computeDistPreview(dualMarket.improved, mu, sigma, amount);
+    cPreview = computeDistPreview(dualMarket.lmsr, mu, sigma, amount);
+    iPreview = computeDistPreview(dualMarket.l2, mu, sigma, amount);
   }
 
   var empty = [];
-  for (var j = 0; j < dualMarket.current.N; j++) empty.push(0);
+  for (var j = 0; j < dualMarket.lmsr.N; j++) empty.push(0);
 
   if (chartMode === 'combined') {
     var xc = charts['distCombinedChart'];
@@ -2391,7 +2391,7 @@ function updateDistPreview() {
 // TRADE PREVIEW STATS
 // ============================================================
 function updatePreviewStats(cPreviewArg, iPreviewArg) {
-  if (!dualMarket || !dualMarket.current) return;
+  if (!dualMarket || !dualMarket.lmsr) return;
 
   var splitPanel = document.getElementById('distPreviewStats');
   var combinedPanel = document.getElementById('distPreviewCombined');
@@ -2403,8 +2403,8 @@ function updatePreviewStats(cPreviewArg, iPreviewArg) {
     var sigma = getDistSigma();
     var amount = parseFloat(document.getElementById('distAmount').value);
     if (sigma && sigma > 0 && amount > 0) {
-      cPreview = computeDistPreview(dualMarket.current, mu, sigma, amount);
-      iPreview = computeDistPreview(dualMarket.improved, mu, sigma, amount);
+      cPreview = computeDistPreview(dualMarket.lmsr, mu, sigma, amount);
+      iPreview = computeDistPreview(dualMarket.l2, mu, sigma, amount);
     }
   }
 
@@ -2414,7 +2414,7 @@ function updatePreviewStats(cPreviewArg, iPreviewArg) {
     return;
   }
 
-  var labels = dualMarket.current.getLabels();
+  var labels = dualMarket.lmsr.getLabels();
 
   // Stats come straight from the engine previews (LMSR / L2-norm), so they match
   // the executed trade exactly — both use the shared kernel-weighted peak payout.
@@ -2516,15 +2516,15 @@ function executeDistTrade(side) {
   }
 
   if (result.error) return showToast(result.error, 'error');
-  if (result.current && result.current.error) return showToast('Current: ' + result.current.error, 'error');
-  if (result.improved && result.improved.error) showToast('Improved: ' + result.improved.error, 'error');
+  if (result.lmsr && result.lmsr.error) return showToast('Current: ' + result.lmsr.error, 'error');
+  if (result.l2 && result.l2.error) showToast('Improved: ' + result.l2.error, 'error');
 
   if (side === 'buy') {
     showToast(traderName + ' dist-bought \u03BC=' + mu.toFixed(1) + ' \u03C3=' + sigma.toFixed(2) + ': ' +
-      formatCompact(result.current.totalTokens) + ' tokens for $' + formatCompact(amount), 'buy');
+      formatCompact(result.lmsr.totalTokens) + ' tokens for $' + formatCompact(amount), 'buy');
   } else {
     showToast(traderName + ' dist-sold \u03BC=' + mu.toFixed(1) + ' \u03C3=' + sigma.toFixed(2) + ': $' +
-      formatCompact(result.current.collateralOut), 'sell');
+      formatCompact(result.lmsr.collateralOut), 'sell');
   }
 
   refreshDistCharts();
@@ -2538,10 +2538,10 @@ function executeSellAll() {
 
   var result = dualMarket.sellAll(traderName);
   if (result.error) return showToast(result.error, 'error');
-  if (result.current && result.current.error) return showToast(result.current.error, 'error');
+  if (result.lmsr && result.lmsr.error) return showToast(result.lmsr.error, 'error');
 
-  showToast(traderName + ' sold all: ' + formatCompact(result.current.tokensReturned) +
-    ' tokens → $' + formatCompact(result.current.collateralOut), 'sell');
+  showToast(traderName + ' sold all: ' + formatCompact(result.lmsr.tokensReturned) +
+    ' tokens → $' + formatCompact(result.lmsr.collateralOut), 'sell');
 
   refreshDistCharts();
   renderTraderList();
@@ -2581,7 +2581,7 @@ function refreshLpTab() {
 
 function buildLpPayoutChartConfig(labels, payoutData, depositedLine, engine) {
   var colors = getChartColors();
-  var lineColor = engine === 'current' ? colors.primary : colors.accent;
+  var lineColor = engine === 'lmsr' ? colors.primary : colors.accent;
   return {
     type: 'line',
     data: {
@@ -2701,31 +2701,31 @@ function buildLpPayoutCombinedConfig(labels, cPayout, iPayout, depositedLine) {
 }
 
 function initLpPayoutCharts() {
-  if (!dualMarket || !dualMarket.current) return;
-  var labels = dualMarket.current.getLabels();
-  var N = dualMarket.current.N;
+  if (!dualMarket || !dualMarket.lmsr) return;
+  var labels = dualMarket.lmsr.getLabels();
+  var N = dualMarket.lmsr.N;
   var empty = [];
   var deposited = [];
-  var dep = dualMarket.current.lpProviders['Creator'] ? dualMarket.current.lpProviders['Creator'].deposited : dualMarket.initConfig.liquidity;
+  var dep = dualMarket.lmsr.lpProviders['Creator'] ? dualMarket.lmsr.lpProviders['Creator'].deposited : dualMarket.initConfig.liquidity;
   for (var j = 0; j < N; j++) { empty.push(dep); deposited.push(dep); }
 
-  getOrCreateChart('lpPayoutCurrentChart', buildLpPayoutChartConfig(labels, deposited.slice(), deposited.slice(), 'current'));
-  getOrCreateChart('lpPayoutImprovedChart', buildLpPayoutChartConfig(labels, deposited.slice(), deposited.slice(), 'improved'));
+  getOrCreateChart('lpPayoutCurrentChart', buildLpPayoutChartConfig(labels, deposited.slice(), deposited.slice(), 'lmsr'));
+  getOrCreateChart('lpPayoutImprovedChart', buildLpPayoutChartConfig(labels, deposited.slice(), deposited.slice(), 'l2'));
   getOrCreateChart('lpPayoutCombinedChart', buildLpPayoutCombinedConfig(labels, deposited.slice(), deposited.slice(), deposited.slice()));
   lpChartsInitialized = true;
 }
 
 function refreshLpPayoutCharts(lpName) {
   if (!dualMarket || !dualMarket.initialized) return;
-  var N = dualMarket.current.N;
+  var N = dualMarket.lmsr.N;
 
   var cLp, iLp;
   if (lpName === '__ALL__') {
-    cLp = dualMarket.current.getAllLpPortfolio();
-    iLp = dualMarket.improved.getAllLpPortfolio();
+    cLp = dualMarket.lmsr.getAllLpPortfolio();
+    iLp = dualMarket.l2.getAllLpPortfolio();
   } else if (lpName) {
-    cLp = dualMarket.current.getLpPortfolio(lpName);
-    iLp = dualMarket.improved.getLpPortfolio(lpName);
+    cLp = dualMarket.lmsr.getLpPortfolio(lpName);
+    iLp = dualMarket.l2.getLpPortfolio(lpName);
   } else {
     cLp = null;
     iLp = null;
@@ -2789,8 +2789,8 @@ function refreshLpStats(lpName) {
   }
 
   var portfolios = dualMarket.getLpPortfolios(lpName);
-  if (cGrid) cGrid.innerHTML = lpStatsHtml(portfolios ? portfolios.current : null, 'current');
-  if (iGrid) iGrid.innerHTML = lpStatsHtml(portfolios ? portfolios.improved : null, 'improved');
+  if (cGrid) cGrid.innerHTML = lpStatsHtml(portfolios ? portfolios.lmsr : null, 'lmsr');
+  if (iGrid) iGrid.innerHTML = lpStatsHtml(portfolios ? portfolios.l2 : null, 'l2');
 }
 
 function refreshLpCombinedStats(lpName) {
@@ -2799,8 +2799,8 @@ function refreshLpCombinedStats(lpName) {
   if (!lpName) { table.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">Select an LP</td></tr>'; return; }
 
   var portfolios = dualMarket.getLpPortfolios(lpName);
-  var cLp = portfolios ? portfolios.current : null;
-  var iLp = portfolios ? portfolios.improved : null;
+  var cLp = portfolios ? portfolios.lmsr : null;
+  var iLp = portfolios ? portfolios.l2 : null;
 
   if (!cLp && !iLp) { table.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">No LP position</td></tr>'; return; }
 
@@ -2886,13 +2886,13 @@ function updateLpPreview() {
     return;
   }
 
-  var cHasLp = dualMarket.current.lpProviders[lpName] && dualMarket.current.lpProviders[lpName].shares > 0;
+  var cHasLp = dualMarket.lmsr.lpProviders[lpName] && dualMarket.lmsr.lpProviders[lpName].shares > 0;
 
   // Show add preview by default, remove preview if they have LP
-  var cAddP = computeLpAddPreview(dualMarket.current, lpName, amount);
-  var iAddP = computeLpAddPreview(dualMarket.improved, lpName, amount);
-  var cRemP = cHasLp ? computeLpRemovePreview(dualMarket.current, lpName, amount) : null;
-  var iRemP = cHasLp ? computeLpRemovePreview(dualMarket.improved, lpName, amount) : null;
+  var cAddP = computeLpAddPreview(dualMarket.lmsr, lpName, amount);
+  var iAddP = computeLpAddPreview(dualMarket.l2, lpName, amount);
+  var cRemP = cHasLp ? computeLpRemovePreview(dualMarket.lmsr, lpName, amount) : null;
+  var iRemP = cHasLp ? computeLpRemovePreview(dualMarket.l2, lpName, amount) : null;
 
   // Split mode
   var cGrid = document.getElementById('lpPreviewCurrentGrid');
@@ -2946,9 +2946,9 @@ function executeLp(action) {
   var result;
 
   if (action === 'removeAll') {
-    var cLp = dualMarket.current.lpProviders[lpName];
+    var cLp = dualMarket.lmsr.lpProviders[lpName];
     if (!cLp || cLp.shares <= 0) return showToast('No LP position to remove', 'error');
-    var maxAmount = dualMarket.current.getPool() * cLp.shares / dualMarket.current.totalLpShares;
+    var maxAmount = dualMarket.lmsr.getPool() * cLp.shares / dualMarket.lmsr.totalLpShares;
     result = dualMarket.removeLiquidity(lpName, maxAmount + 1);
     if (result.error) return showToast(result.error, 'error');
     showToast('Removed all LP for ' + lpName, 'success');
@@ -2959,11 +2959,11 @@ function executeLp(action) {
     if (action === 'add') {
       result = dualMarket.addLiquidity(lpName, amount);
       if (result.error) return showToast(result.error, 'error');
-      showToast('Added ' + formatCompact(amount) + ' LP for ' + lpName + ' (' + formatCompact(result.current.sharesReceived) + ' shares)', 'success');
+      showToast('Added ' + formatCompact(amount) + ' LP for ' + lpName + ' (' + formatCompact(result.lmsr.sharesReceived) + ' shares)', 'success');
     } else if (action === 'remove') {
       result = dualMarket.removeLiquidity(lpName, amount);
       if (result.error) return showToast(result.error, 'error');
-      showToast('Removed LP: ' + formatCompact(result.current.totalPayout) + ' returned to ' + lpName, 'success');
+      showToast('Removed LP: ' + formatCompact(result.lmsr.totalPayout) + ' returned to ' + lpName, 'success');
     }
   }
 
@@ -2980,8 +2980,8 @@ function topUpLpUser() {
     if (isNaN(amount) || amount <= 0) return showToast('Invalid amount', 'error');
     var t = dualMarket.traders[lpName];
     if (!t) return showToast('Unknown user', 'error');
-    t.currentWallet += amount;
-    t.improvedWallet += amount;
+    t.lmsrWallet += amount;
+    t.l2Wallet += amount;
     for (var i = 0; i < traderRegistry.length; i++) {
       if (traderRegistry[i].name === lpName) {
         traderRegistry[i].balance += amount;
@@ -3034,8 +3034,8 @@ function refreshLpCombinedTraderStats(lpName) {
       '<div class="result-item"><div class="result-label">Combined PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(totalPnL) + ' (' + pnlPct + '%)</div></div>';
   }
 
-  cGrid.innerHTML = combinedHtml(traderP ? traderP.current : null, lpP ? lpP.current : null, 'current');
-  iGrid.innerHTML = combinedHtml(traderP ? traderP.improved : null, lpP ? lpP.improved : null, 'improved');
+  cGrid.innerHTML = combinedHtml(traderP ? traderP.lmsr : null, lpP ? lpP.lmsr : null, 'lmsr');
+  iGrid.innerHTML = combinedHtml(traderP ? traderP.l2 : null, lpP ? lpP.l2 : null, 'l2');
 }
 
 // --- LP Simulation ---
@@ -3226,16 +3226,16 @@ function resolveMarket() {
   var value = parseFloat(document.getElementById('resolveInput').value);
   if (isNaN(value)) return showToast('Invalid resolve value', 'error');
 
-  var rangeMin = dualMarket.current.rangeMin;
-  var rangeMax = dualMarket.current.rangeMax;
+  var rangeMin = dualMarket.lmsr.rangeMin;
+  var rangeMax = dualMarket.lmsr.rangeMax;
   if (value < rangeMin || value > rangeMax) {
     return showToast('Value must be in range [' + rangeMin + ', ' + rangeMax + ']', 'error');
   }
 
   var result = dualMarket.resolve(value);
   if (result.error) return showToast(result.error, 'error');
-  if (result.current && result.current.error) return showToast('Current: ' + result.current.error, 'error');
-  if (result.improved && result.improved.error) return showToast('Improved: ' + result.improved.error, 'error');
+  if (result.lmsr && result.lmsr.error) return showToast('Current: ' + result.lmsr.error, 'error');
+  if (result.l2 && result.l2.error) return showToast('Improved: ' + result.l2.error, 'error');
 
   // Show previous resolve value
   if (lastResolveValue !== null) {
@@ -3249,7 +3249,7 @@ function resolveMarket() {
   // Render resolve UI
   renderResolveSummary(result, value);
   renderPayoutTable(result);
-  renderKernelChart(result.improved.winningBin);
+  renderKernelChart(result.l2.winningBin);
 
   // Show sections
   document.getElementById('resolveSummaryCard').style.display = '';
@@ -3268,41 +3268,41 @@ function resolveMarket() {
 
   applyStatsMode();
 
-  var label = dualMarket.current.getLabels()[result.current.winningBin] || result.current.winningBin;
-  showToast('Resolved at ' + value.toFixed(1) + ' \u2192 bin ' + result.current.winningBin + ' (' + label + ')', 'resolve');
+  var label = dualMarket.lmsr.getLabels()[result.lmsr.winningBin] || result.lmsr.winningBin;
+  showToast('Resolved at ' + value.toFixed(1) + ' \u2192 bin ' + result.lmsr.winningBin + ' (' + label + ')', 'resolve');
 }
 
 // --- Payout Comparison Summary (P5-3) ---
 function renderResolveSummary(result, value) {
   var grid = document.getElementById('resolveSummaryGrid');
-  var winBin = result.current.winningBin;
-  var label = dualMarket.current.getLabels()[winBin] || winBin;
+  var winBin = result.lmsr.winningBin;
+  var label = dualMarket.lmsr.getLabels()[winBin] || winBin;
 
   var cTraderTotal = 0, iTraderTotal = 0;
   var cLpTotal = 0, iLpTotal = 0;
-  for (var i = 0; i < result.current.payouts.length; i++) {
-    if (result.current.payouts[i].type === 'Trader') cTraderTotal += result.current.payouts[i].payout;
-    else cLpTotal += result.current.payouts[i].payout;
+  for (var i = 0; i < result.lmsr.payouts.length; i++) {
+    if (result.lmsr.payouts[i].type === 'Trader') cTraderTotal += result.lmsr.payouts[i].payout;
+    else cLpTotal += result.lmsr.payouts[i].payout;
   }
-  for (var i = 0; i < result.improved.payouts.length; i++) {
-    if (result.improved.payouts[i].type === 'Trader') iTraderTotal += result.improved.payouts[i].payout;
-    else iLpTotal += result.improved.payouts[i].payout;
+  for (var i = 0; i < result.l2.payouts.length; i++) {
+    if (result.l2.payouts[i].type === 'Trader') iTraderTotal += result.l2.payouts[i].payout;
+    else iLpTotal += result.l2.payouts[i].payout;
   }
 
   var traderDelta = iTraderTotal - cTraderTotal;
   var traderDeltaClass = traderDelta >= 0 ? 'positive' : 'negative';
   var traderDeltaSign = traderDelta >= 0 ? '+' : '';
 
-  var solvencyClass = result.improved.claimScale >= 1 ? 'positive' : 'negative';
+  var solvencyClass = result.l2.claimScale >= 1 ? 'positive' : 'negative';
   grid.innerHTML = '' +
     '<div class="result-item"><div class="result-label">Resolve Value</div><div class="result-value">' + value.toFixed(1) + '</div></div>' +
     '<div class="result-item"><div class="result-label">Winning Bin</div><div class="result-value" style="color:var(--success)">' + winBin + ' (' + label + ')</div></div>' +
-    '<div class="result-item"><div class="result-label">LMSR Vault</div><div class="result-value">' + formatCompact(dualMarket.current.getPool()) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">L2 Solvency Factor</div><div class="result-value ' + solvencyClass + '">' + (result.improved.claimScale * 100).toFixed(2) + '%</div></div>' +
+    '<div class="result-item"><div class="result-label">LMSR Vault</div><div class="result-value">' + formatCompact(dualMarket.lmsr.getPool()) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">L2 Solvency Factor</div><div class="result-value ' + solvencyClass + '">' + (result.l2.claimScale * 100).toFixed(2) + '%</div></div>' +
     '<div class="result-item"><div class="result-label">LMSR Trader Payouts</div><div class="result-value" style="color:var(--primary-light)">' + formatCompact(cTraderTotal) + '</div></div>' +
     '<div class="result-item"><div class="result-label">L2 Trader Payouts</div><div class="result-value" style="color:var(--accent)">' + formatCompact(iTraderTotal) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">LMSR LP Residual</div><div class="result-value" style="color:var(--primary-light)">' + formatCompact(result.current.lpResidual) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">L2 LP Residual</div><div class="result-value" style="color:var(--accent)">' + formatCompact(result.improved.lpResidual) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">LMSR LP Residual</div><div class="result-value" style="color:var(--primary-light)">' + formatCompact(result.lmsr.lpResidual) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">L2 LP Residual</div><div class="result-value" style="color:var(--accent)">' + formatCompact(result.l2.lpResidual) + '</div></div>' +
     '<div class="result-item"><div class="result-label">Trader Delta (I-C)</div><div class="result-value ' + traderDeltaClass + '">' + traderDeltaSign + formatCompact(traderDelta) + '</div></div>';
 }
 
@@ -3311,7 +3311,7 @@ function renderPayoutRow(p, model, separator) {
   var pnlPct = p.spent > 0 ? (p.netPnL / p.spent * 100).toFixed(1) : '0.0';
   var pnlClass = p.netPnL >= 0 ? 'pnl-positive' : 'pnl-negative';
   var pnlSign = p.netPnL >= 0 ? '+' : '';
-  var modelLabel = model === 'current' ? 'LMSR' : 'L2-norm';
+  var modelLabel = model === 'lmsr' ? 'LMSR' : 'L2-norm';
   var rowClass = 'row-' + model + (separator ? ' row-separator' : '');
 
   return '<tr class="' + rowClass + '">' +
@@ -3330,8 +3330,8 @@ function renderPayoutRow(p, model, separator) {
 
 function renderPayoutTable(result) {
   var tbody = document.getElementById('payoutTableBody');
-  var cPayouts = result.current.payouts;
-  var iPayouts = result.improved.payouts;
+  var cPayouts = result.lmsr.payouts;
+  var iPayouts = result.l2.payouts;
 
   // Map improved payouts by name+type
   var iMap = {};
@@ -3345,9 +3345,9 @@ function renderPayoutTable(result) {
     var ip = iMap[cp.name + ':' + cp.type];
     var isLast = (i === cPayouts.length - 1);
 
-    html += renderPayoutRow(cp, 'current', false);
+    html += renderPayoutRow(cp, 'lmsr', false);
     if (ip) {
-      html += renderPayoutRow(ip, 'improved', !isLast);
+      html += renderPayoutRow(ip, 'l2', !isLast);
     }
   }
 
@@ -3362,13 +3362,13 @@ function renderCombinedPayoutTable(result) {
 
   // Build maps: name -> payout for traders and LPs, per model
   var cTraders = {}, cLps = {}, iTraders = {}, iLps = {};
-  for (var i = 0; i < result.current.payouts.length; i++) {
-    var p = result.current.payouts[i];
+  for (var i = 0; i < result.lmsr.payouts.length; i++) {
+    var p = result.lmsr.payouts[i];
     if (p.type === 'Trader') cTraders[p.name] = p;
     else cLps[p.name] = p;
   }
-  for (var i = 0; i < result.improved.payouts.length; i++) {
-    var p = result.improved.payouts[i];
+  for (var i = 0; i < result.l2.payouts.length; i++) {
+    var p = result.l2.payouts[i];
     if (p.type === 'Trader') iTraders[p.name] = p;
     else iLps[p.name] = p;
   }
@@ -3446,10 +3446,10 @@ var lastKernelWinBin = -1;
 
 function renderKernelChart(winBin) {
   lastKernelWinBin = winBin;
-  var N = dualMarket.improved.N;
-  var W = dualMarket.improved.kernelWidth;
-  var kernel = dualMarket.improved.getSettlementKernel(winBin);
-  var labels = dualMarket.improved.getLabels();
+  var N = dualMarket.l2.N;
+  var W = dualMarket.l2.kernelWidth;
+  var kernel = dualMarket.l2.getSettlementKernel(winBin);
+  var labels = dualMarket.l2.getLabels();
   var colors = getChartColors();
 
   // Show zoom button when bins are high relative to kernel width
@@ -3529,8 +3529,8 @@ function toggleKernelZoom() {
 
 // --- Resolution Chart Markers (P5-6) ---
 function applyResolutionMarkers() {
-  if (!dualMarket || !dualMarket.current || !dualMarket.current.resolved) return;
-  var winBin = dualMarket.current.winningBin;
+  if (!dualMarket || !dualMarket.lmsr || !dualMarket.lmsr.resolved) return;
+  var winBin = dualMarket.lmsr.winningBin;
   var chartIds = ['distCurrentChart', 'distImprovedChart', 'distCombinedChart'];
   for (var c = 0; c < chartIds.length; c++) {
     var chart = charts[chartIds[c]];
@@ -3605,8 +3605,8 @@ function loadMarketState() {
     document.getElementById('resolveInput').value = ((cfg.rangeMin + cfg.rangeMax) / 2).toFixed(1);
     document.getElementById('resolveKernelWidthDisplay').textContent = cfg.kernelWidth;
 
-    lastResolveValue = dualMarket.current.lastResolveValue;
-    document.getElementById('resolveBtn').textContent = dualMarket.current.resolved ? 'Re-resolve' : 'Resolve';
+    lastResolveValue = dualMarket.lmsr.lastResolveValue;
+    document.getElementById('resolveBtn').textContent = dualMarket.lmsr.resolved ? 'Re-resolve' : 'Resolve';
     document.getElementById('resolvePrevValue').textContent = lastResolveValue != null ? lastResolveValue.toFixed(1) : '—';
 
     enableTradingTabs();
@@ -3617,13 +3617,13 @@ function loadMarketState() {
     updateTraderSelectors();
     refreshDistCharts();
 
-    if (dualMarket.current.resolved) {
+    if (dualMarket.lmsr.resolved) {
       // Re-resolve to get accurate lpResidual/claimScale for display
-      var rr = dualMarket.resolve(dualMarket.current.lastResolveValue);
+      var rr = dualMarket.resolve(dualMarket.lmsr.lastResolveValue);
       lastResolveResult = rr;
-      renderResolveSummary(rr, dualMarket.current.lastResolveValue);
+      renderResolveSummary(rr, dualMarket.lmsr.lastResolveValue);
       renderPayoutTable(rr);
-      renderKernelChart(dualMarket.improved.winningBin);
+      renderKernelChart(dualMarket.l2.winningBin);
       document.getElementById('resolveSummaryCard').style.display = '';
       document.getElementById('payoutTableWrapper').style.display = '';
       document.getElementById('kernelVizCard').style.display = '';
@@ -3705,10 +3705,10 @@ function getPayoutAnalysisParticipants() {
   var fm = payoutAnalysisFilter;
 
   if (fm === 'trader' || fm === 'both') {
-    for (var name in dualMarket.current.traderHoldings) {
-      var th = dualMarket.current.traderHoldings[name];
+    for (var name in dualMarket.lmsr.traderHoldings) {
+      var th = dualMarket.lmsr.traderHoldings[name];
       var has = false;
-      for (var j = 0; j < dualMarket.current.N; j++) {
+      for (var j = 0; j < dualMarket.lmsr.N; j++) {
         if (th.holdings[j] > 0.01) { has = true; break; }
       }
       if (has || th.spent > 0) {
@@ -3719,8 +3719,8 @@ function getPayoutAnalysisParticipants() {
   }
 
   if (fm === 'lp' || fm === 'both') {
-    for (var name in dualMarket.current.lpProviders) {
-      var lp = dualMarket.current.lpProviders[name];
+    for (var name in dualMarket.lmsr.lpProviders) {
+      var lp = dualMarket.lmsr.lpProviders[name];
       if (lp.shares > 0 || lp.deposited > 0) {
         if (seen[name] && fm === 'both') {
           for (var i = 0; i < participants.length; i++) {
@@ -3777,7 +3777,7 @@ function computePayoutAnalysisData(engine, participant) {
 }
 
 function buildPayoutAnalysisConfig(engine, participants, labels, chartColors, panelType) {
-  var N = engine ? engine.N : dualMarket.current.N;
+  var N = engine ? engine.N : dualMarket.lmsr.N;
   var large = N >= 128;
   var yTitle = payoutAnalysisYAxis === 'payout' ? 'Payout'
     : payoutAnalysisYAxis === 'profit' ? 'Profit (Payout + Received − Spent)'
@@ -3793,8 +3793,8 @@ function buildPayoutAnalysisConfig(engine, participants, labels, chartColors, pa
       var p = participants[i];
       var color = PARTICIPANT_COLORS[i % PARTICIPANT_COLORS.length];
       var hidden = !!payoutAnalysisHidden[p.name];
-      var cData = computePayoutAnalysisData(dualMarket.current, p);
-      var iData = computePayoutAnalysisData(dualMarket.improved, p);
+      var cData = computePayoutAnalysisData(dualMarket.lmsr, p);
+      var iData = computePayoutAnalysisData(dualMarket.l2, p);
       datasets.push({
         label: p.name + ' (C)',
         data: cData, borderColor: color, backgroundColor: color + '18',
@@ -3877,7 +3877,7 @@ function renderPayoutAnalysisChart() {
   if (participants.length === 0) { if (card) card.style.display = 'none'; return; }
   if (card) card.style.display = '';
 
-  var labels = dualMarket.current.getLabels();
+  var labels = dualMarket.lmsr.getLabels();
   var colors = getChartColors();
 
   var togglesEl = document.getElementById('payoutParticipantToggles');
@@ -3896,9 +3896,9 @@ function renderPayoutAnalysisChart() {
   }
 
   getOrCreateChart('payoutAnalysisCurrentChart',
-    buildPayoutAnalysisConfig(dualMarket.current, participants, labels, colors, 'current'));
+    buildPayoutAnalysisConfig(dualMarket.lmsr, participants, labels, colors, 'lmsr'));
   getOrCreateChart('payoutAnalysisImprovedChart',
-    buildPayoutAnalysisConfig(dualMarket.improved, participants, labels, colors, 'improved'));
+    buildPayoutAnalysisConfig(dualMarket.l2, participants, labels, colors, 'l2'));
   getOrCreateChart('payoutAnalysisCombinedChart',
     buildPayoutAnalysisConfig(null, participants, labels, colors, 'combined'));
 }

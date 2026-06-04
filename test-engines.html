@@ -40,23 +40,23 @@
   var dm = new DualMarket();
   dm.init(32, 0, 100, 10000, { tradeFeeBps: 0 }, 3);
 
-  assert(dm.current instanceof LmsrMarket, 'current slot is LmsrMarket');
-  assert(dm.improved instanceof L2Market, 'improved slot is L2Market');
-  assert(dm.current.N === 32 && dm.improved.N === 32, 'N = 32 both');
-  assert(near(dm.current.getPool(), 10000), 'LMSR pool = liquidity at start');
-  assert(near(dm.improved.getPool(), 10000), 'L2 pool (k) = liquidity at start');
-  assert(near(dm.current.b, 10000 / Math.log(32)), 'LMSR b = liquidity / ln(N)');
-  assert(dm.improved.kernelWidth === 3 && dm.current.kernelWidth === 3, 'both engines carry kernel width');
+  assert(dm.lmsr instanceof LmsrMarket, 'current slot is LmsrMarket');
+  assert(dm.l2 instanceof L2Market, 'improved slot is L2Market');
+  assert(dm.lmsr.N === 32 && dm.l2.N === 32, 'N = 32 both');
+  assert(near(dm.lmsr.getPool(), 10000), 'LMSR pool = liquidity at start');
+  assert(near(dm.l2.getPool(), 10000), 'L2 pool (k) = liquidity at start');
+  assert(near(dm.lmsr.b, 10000 / Math.log(32)), 'LMSR b = liquidity / ln(N)');
+  assert(dm.l2.kernelWidth === 3 && dm.lmsr.kernelWidth === 3, 'both engines carry kernel width');
 
-  var cProbs = dm.current.getProbabilities();
-  var iProbs = dm.improved.getProbabilities();
+  var cProbs = dm.lmsr.getProbabilities();
+  var iProbs = dm.l2.getProbabilities();
   assert(near(sumArray(cProbs), 1, 1e-6), 'LMSR probs sum to 1');
   assert(near(sumArray(iProbs), 1, 1e-6), 'L2 probs sum to 1');
   assert(near(cProbs[0], 1 / 32, 1e-6), 'LMSR uniform start = 1/N');
   assert(near(iProbs[0], 1 / 32, 1e-6), 'L2 uniform start = 1/N');
-  assert(near(l2k(dm.improved), 10000), 'L2 invariant sqrt(sum x^2) = k');
+  assert(near(l2k(dm.l2), 10000), 'L2 invariant sqrt(sum x^2) = k');
 
-  var labels = dm.current.getLabels();
+  var labels = dm.lmsr.getLabels();
   assert(labels.length === 32 && labels[0] === '0-3', 'labels correct (shared)');
 
   // ============================================================
@@ -120,14 +120,14 @@
   suite('5. Distribution buy');
   function freshDual() { var d = new DualMarket(); d.init(N, 0, 100, L, { tradeFeeBps: 0 }, 3); d.addTrader('a', 1e9); return d; }
   var d5 = freshDual();
-  var cPoolB = d5.current.getPool(), iPoolB = d5.improved.getPool();
+  var cPoolB = d5.lmsr.getPool(), iPoolB = d5.l2.getPool();
   var r5 = d5.distributionBuy('a', 50, 12, 8000);
   assert(!r5.error, 'dist buy ok');
-  assert(near(d5.current.getPool() - cPoolB, 8000, 0.05), 'LMSR dist buy grows vault by net');
-  assert(near(d5.improved.getPool() - iPoolB, 8000, 0.05), 'L2 dist buy grows vault by net');
-  assert(near(sumArray(r5.current.tokensPerBin), r5.current.totalTokens, 0.01), 'LMSR tokensPerBin sum = totalTokens');
+  assert(near(d5.lmsr.getPool() - cPoolB, 8000, 0.05), 'LMSR dist buy grows vault by net');
+  assert(near(d5.l2.getPool() - iPoolB, 8000, 0.05), 'L2 dist buy grows vault by net');
+  assert(near(sumArray(r5.lmsr.tokensPerBin), r5.lmsr.totalTokens, 0.01), 'LMSR tokensPerBin sum = totalTokens');
   // gaussian shape: peak token bin near mu (bin 8 for mu=50, range 0-100, N=16)
-  var cPeak = 0, cPeakBin = 0; for (var j = 0; j < N; j++) if (r5.current.tokensPerBin[j] > cPeak) { cPeak = r5.current.tokensPerBin[j]; cPeakBin = j; }
+  var cPeak = 0, cPeakBin = 0; for (var j = 0; j < N; j++) if (r5.lmsr.tokensPerBin[j] > cPeak) { cPeak = r5.lmsr.tokensPerBin[j]; cPeakBin = j; }
   assert(Math.abs(cPeakBin - 8) <= 1, 'LMSR dist buy peaks near mu');
 
   // ============================================================
@@ -136,13 +136,13 @@
   suite('6. Distribution sell / sellAll');
   var d6 = freshDual();
   d6.distributionBuy('a', 50, 12, 8000);
-  var cHoldBefore = sumArray(d6.current.traderHoldings['a'].holdings);
+  var cHoldBefore = sumArray(d6.lmsr.traderHoldings['a'].holdings);
   var rsell = d6.sellAll('a');
   assert(!rsell.error, 'sellAll ok');
-  assert(near(sumArray(d6.current.traderHoldings['a'].holdings), 0, 0.01), 'LMSR holdings zeroed after sellAll');
-  assert(near(sumArray(d6.improved.traderHoldings['a'].holdings), 0, 0.01), 'L2 holdings zeroed after sellAll');
-  assert(near(d6.current.getPool(), L, 0.1), 'LMSR vault back to start after full buy+sellAll (0 fee)');
-  assert(near(d6.improved.getPool(), L, 0.1), 'L2 vault back to start after full buy+sellAll (0 fee)');
+  assert(near(sumArray(d6.lmsr.traderHoldings['a'].holdings), 0, 0.01), 'LMSR holdings zeroed after sellAll');
+  assert(near(sumArray(d6.l2.traderHoldings['a'].holdings), 0, 0.01), 'L2 holdings zeroed after sellAll');
+  assert(near(d6.lmsr.getPool(), L, 0.1), 'LMSR vault back to start after full buy+sellAll (0 fee)');
+  assert(near(d6.l2.getPool(), L, 0.1), 'L2 vault back to start after full buy+sellAll (0 fee)');
   assert(cHoldBefore > 0, 'had holdings before sellAll');
 
   // ============================================================
@@ -198,8 +198,8 @@
   d9.distributionBuy('a', 30, 10, 9000);
   d9.distributionBuy('a', 70, 8, 7000);
   // snapshot pools before resolving (resolve mutates resolved flag only)
-  conservationCheck('LMSR', d9.current, 40);
-  conservationCheck('L2', d9.improved, 40);
+  conservationCheck('LMSR', d9.lmsr, 40);
+  conservationCheck('L2', d9.l2, 40);
 
   // ============================================================
   // 10. Solvency (claimScale ≤ 1, scaled claims ≤ pool)
@@ -221,7 +221,7 @@
   // heavy concentrated buys to force claims > pool
   var d10 = new DualMarket(); d10.init(N, 0, 100, 5000, { tradeFeeBps: 0 }, 3); d10.addTrader('a', 1e9);
   for (var t10 = 0; t10 < 6; t10++) d10.distributionBuy('a', 50, 6, 9000);
-  for (var wv = 10; wv <= 90; wv += 20) { solvencyCheck('LMSR', d10.current, wv); solvencyCheck('L2', d10.improved, wv); }
+  for (var wv = 10; wv <= 90; wv += 20) { solvencyCheck('LMSR', d10.lmsr, wv); solvencyCheck('L2', d10.l2, wv); }
 
   // ============================================================
   // 11. LP add/remove — L2 preserves probabilities (proportional)
@@ -268,13 +268,13 @@
   suite('13. LP portfolios');
   var d13 = freshDual();
   d13.distributionBuy('a', 50, 10, 10000);
-  var lpC = d13.current.getLpPortfolio('Creator');
-  var lpI = d13.improved.getLpPortfolio('Creator');
+  var lpC = d13.lmsr.getLpPortfolio('Creator');
+  var lpI = d13.l2.getLpPortfolio('Creator');
   assert(lpC && lpI, 'both LP portfolios returned');
-  assert(near(lpC.currentValue, d13.current.getPool(), 0.5), 'LMSR LP (sole) value = vault');
-  assert(near(lpI.currentValue, d13.improved.getPool(), 0.5), 'L2 LP (sole) value = vault');
+  assert(near(lpC.currentValue, d13.lmsr.getPool(), 0.5), 'LMSR LP (sole) value = vault');
+  assert(near(lpI.currentValue, d13.l2.getPool(), 0.5), 'L2 LP (sole) value = vault');
   assert(lpC.payoutPerOutcome.length === N && lpI.payoutPerOutcome.length === N, 'LP payout curves length N');
-  var allC = d13.current.getAllLpPortfolio();
+  var allC = d13.lmsr.getAllLpPortfolio();
   assert(near(allC.poolFraction, 1), 'getAllLpPortfolio fraction = 1');
 
   // ============================================================
@@ -320,8 +320,8 @@
   suite('15. Payout per outcome');
   var d15 = freshDual();
   d15.distributionBuy('a', 50, 8, 8000);
-  var ppoC = d15.current.getTraderPayoutPerOutcome('a');
-  var ppoI = d15.improved.getTraderPayoutPerOutcome('a');
+  var ppoC = d15.lmsr.getTraderPayoutPerOutcome('a');
+  var ppoI = d15.l2.getTraderPayoutPerOutcome('a');
   assert(ppoC.length === N && ppoI.length === N, 'payout-per-outcome length N');
   assert(maxArray(ppoC) > 0 && maxArray(ppoI) > 0, 'payout-per-outcome positive somewhere');
   // peak payout outcome should be near mu bin
@@ -337,13 +337,13 @@
   d16.addLiquidity('Creator', 5000);
   var json = d16.serialize();
   var d16b = DualMarket.loadFromSave(json);
-  assert(near(d16b.current.b, d16.current.b, 1e-9), 'LMSR b survives serialize');
-  assert(near(d16b.current.getPool(), d16.current.getPool(), 0.01), 'LMSR pool survives serialize');
-  assert(near(d16b.improved.getPool(), d16.improved.getPool(), 0.01), 'L2 pool survives serialize');
-  var ph1 = d16.current.getProbabilities(), ph2 = d16b.current.getProbabilities();
+  assert(near(d16b.lmsr.b, d16.lmsr.b, 1e-9), 'LMSR b survives serialize');
+  assert(near(d16b.lmsr.getPool(), d16.lmsr.getPool(), 0.01), 'LMSR pool survives serialize');
+  assert(near(d16b.l2.getPool(), d16.l2.getPool(), 0.01), 'L2 pool survives serialize');
+  var ph1 = d16.lmsr.getProbabilities(), ph2 = d16b.lmsr.getProbabilities();
   var pdiff = 0; for (var j = 0; j < N; j++) pdiff = Math.max(pdiff, Math.abs(ph1[j] - ph2[j]));
   assert(pdiff < 1e-9, 'LMSR probabilities survive serialize');
-  assert(near(d16b.current.traderHoldings['a'].holdings[9], d16.current.traderHoldings['a'].holdings[9], 0.01), 'holdings survive serialize');
+  assert(near(d16b.lmsr.traderHoldings['a'].holdings[9], d16.lmsr.traderHoldings['a'].holdings[9], 0.01), 'holdings survive serialize');
 
   // ============================================================
   // 17. Bonding curve (sequential same-bin buys cost more per token)
@@ -385,22 +385,22 @@
   suite('20. Wallet isolation');
   var d20 = freshDual();
   var bal0 = d20.getTraderBalance('a');
-  assert(bal0.current === bal0.improved, 'wallets equal at start');
+  assert(bal0.lmsr === bal0.l2, 'wallets equal at start');
   d20.distributionBuy('a', 50, 10, 5000);
   var bal1 = d20.getTraderBalance('a');
-  assert(near(bal1.current, 1e9 - 5000) && near(bal1.improved, 1e9 - 5000), 'both wallets debited equally by spend');
-  assert(bal1.current === bal1.improved, 'wallets stay isolated but equal-cost on buy');
+  assert(near(bal1.lmsr, 1e9 - 5000) && near(bal1.l2, 1e9 - 5000), 'both wallets debited equally by spend');
+  assert(bal1.lmsr === bal1.l2, 'wallets stay isolated but equal-cost on buy');
 
   // ============================================================
   // 21. Non-standard ranges
   // ============================================================
   suite('21. Non-standard ranges');
   var dn = new DualMarket(); dn.init(10, -100, -50, 50000, { tradeFeeBps: 0 }, 2); dn.addTrader('a', 1e9);
-  assert(near(dn.current.binWidth, 5), 'binWidth for [-100,-50]/10 = 5');
-  assert(near(dn.current.centers[0], -97.5), 'first center = -97.5');
+  assert(near(dn.lmsr.binWidth, 5), 'binWidth for [-100,-50]/10 = 5');
+  assert(near(dn.lmsr.centers[0], -97.5), 'first center = -97.5');
   var rn = dn.distributionBuy('a', -75, 8, 6000);
   assert(!rn.error, 'dist buy ok in negative range');
-  var resN = dn.current.resolve(-75);
+  var resN = dn.lmsr.resolve(-75);
   assert(resN.winningBin === 5, 'resolve -75 in [-100,-50] = bin 5');
 
   // ============================================================
@@ -409,13 +409,13 @@
   suite('22. Error handling');
   var de = freshDual();
   globalTraders = { a: { wallet: 100 } };
-  de.current._setWallets;
-  assert(de.current.discreteBuy('a', 0, 1e12).error, 'buy beyond wallet errors (LMSR)');
-  assert(de.current.discreteBuy('a', -1, 100).error, 'invalid bin errors');
-  assert(de.current.discreteSell('a', 0, 1e9).error, 'oversell errors');
-  de.current.resolve(50);
-  assert(de.current.discreteBuy('a', 0, 10).error, 'buy after resolve errors');
-  assert(de.current.addLiquidity('a', 10).error, 'addLiquidity after resolve errors');
+  de.lmsr._setWallets;
+  assert(de.lmsr.discreteBuy('a', 0, 1e12).error, 'buy beyond wallet errors (LMSR)');
+  assert(de.lmsr.discreteBuy('a', -1, 100).error, 'invalid bin errors');
+  assert(de.lmsr.discreteSell('a', 0, 1e9).error, 'oversell errors');
+  de.lmsr.resolve(50);
+  assert(de.lmsr.discreteBuy('a', 0, 10).error, 'buy after resolve errors');
+  assert(de.lmsr.addLiquidity('a', 10).error, 'addLiquidity after resolve errors');
 
   // ============================================================
   // SUMMARY

@@ -54,7 +54,7 @@ function debounce(fn, ms) {
 }
 
 function isLargeMarket() {
-  return dualMarket && dualMarket.current && dualMarket.current.N >= 128;
+  return dualMarket && dualMarket.lmsr && dualMarket.lmsr.N >= 128;
 }
 
 function formatCompact(n) {
@@ -121,8 +121,8 @@ function updateAllCharts() {
     if (typeof reapplyDatasetToggles === 'function') reapplyDatasetToggles();
     // Re-apply resolution markers and kernel chart if resolved
     if (typeof applyResolutionMarkers === 'function') applyResolutionMarkers();
-    if (dualMarket.current.resolved && typeof renderKernelChart === 'function') {
-      renderKernelChart(dualMarket.current.winningBin);
+    if (dualMarket.lmsr.resolved && typeof renderKernelChart === 'function') {
+      renderKernelChart(dualMarket.lmsr.winningBin);
     }
     // LP charts
     if (typeof initLpPayoutCharts === 'function') initLpPayoutCharts();

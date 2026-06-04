@@ -154,7 +154,12 @@ Full re-audit of the committed Phase 1 work. Findings + fixes:
       dual) + UI-glue `comparison.js`, loaded via ordered `<script>` tags (no
       build step). Engine tests + browser load-order + inline-script compile all
       verified green (141 tests).
-- [ ] **2.2** Clean rename `current→lmsr`, `improved→l2` across the now-smaller files.
+- [x] **2.2** Clean rename `current→lmsr`, `improved→l2` (DualMarket slot props,
+      return keys, `*Wallet` fields, model-selector strings) across dual.js,
+      comparison.js, index.html, test-engines.html. Preserved `currentTheme`,
+      `currentSection`, `currentValue`, CSS class names (`panel-current`,
+      `col-current`, …) and element IDs (non-functional). Verified: 141 tests,
+      inline compile, full dual API smoke (lmsr/l2 keys, serialize roundtrip).
 - [ ] **2.3** Add `LS-LMSR` (`b = α·Σqᵢ`, liquidity-sensitive) as an `LmsrMarket`
       mode; derive `α` so initial depth matches the fixed-b mapping at q→uniform.
 - [ ] **2.4** Setup-tab control to pick LMSR vs LS-LMSR; thread through DualMarket
