@@ -113,10 +113,18 @@ Open `test-engines.html` to run the engine unit tests in the browser.
 ```
 comparison/
 ├── index.html              # Full UI (all tabs and controls)
-├── comparison.js           # Both AMM engines + shared kernel + DualMarket orchestrator
+├── engines/
+│   ├── core.js             # Constants, globalTraders, shared math helpers, settlement mixin
+│   ├── l2.js               # L2-norm (hypersphere) engine
+│   ├── lmsr.js             # LMSR engine
+│   └── dual.js             # DualMarket orchestrator (runs both engines side-by-side)
+├── comparison.js           # UI glue only (theme, formatting, settings, init)
 ├── styles.css              # Theming (dark/light), layout, components
 ├── test-engines.html       # Standalone engine unit tests (LMSR + L2-norm + kernel)
 ├── LMSR_REFACTOR_PLAN.md   # Refactor plan / design decisions
 ├── vendor/                 # Chart.js, Hammer.js, zoom plugin, Inter font
 └── TASKS.md                # Development task tracker
 ```
+
+Scripts load in dependency order: `engines/core.js` → `l2.js` → `lmsr.js` →
+`dual.js` → `comparison.js`. No build step — plain `<script>` tags.

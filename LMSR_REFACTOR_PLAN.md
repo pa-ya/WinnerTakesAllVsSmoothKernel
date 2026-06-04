@@ -150,8 +150,10 @@ Full re-audit of the committed Phase 1 work. Findings + fixes:
 
 ## Phase 2 — LMSR vs LS-LMSR toggle + modularization
 
-- [ ] **2.1** Split `comparison.js` into `engines/*.js` (l2, lmsr, dual, shared
-      settlement) + UI glue, loaded via `<script>` tags (no build step).
+- [x] **2.1** Split `comparison.js` into `engines/*.js` (core/shared, l2, lmsr,
+      dual) + UI-glue `comparison.js`, loaded via ordered `<script>` tags (no
+      build step). Engine tests + browser load-order + inline-script compile all
+      verified green (141 tests).
 - [ ] **2.2** Clean rename `current→lmsr`, `improved→l2` across the now-smaller files.
 - [ ] **2.3** Add `LS-LMSR` (`b = α·Σqᵢ`, liquidity-sensitive) as an `LmsrMarket`
       mode; derive `α` so initial depth matches the fixed-b mapping at q→uniform.
