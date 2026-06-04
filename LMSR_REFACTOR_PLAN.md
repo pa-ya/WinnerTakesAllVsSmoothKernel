@@ -160,10 +160,46 @@ Full re-audit of the committed Phase 1 work. Findings + fixes:
       `currentSection`, `currentValue`, CSS class names (`panel-current`,
       `col-current`, …) and element IDs (non-functional). Verified: 141 tests,
       inline compile, full dual API smoke (lmsr/l2 keys, serialize roundtrip).
-- [ ] **2.3** Add `LS-LMSR` (`b = α·Σqᵢ`, liquidity-sensitive) as an `LmsrMarket`
-      mode; derive `α` so initial depth matches the fixed-b mapping at q→uniform.
-- [ ] **2.4** Setup-tab control to pick LMSR vs LS-LMSR; thread through DualMarket
-      init + serialize/load. Update tests.
+- [x] **2.3** Added `LS-LMSR` (pure Othman `b = α·ΣQ`, uniform phantom seed as LP
+      lever, collateral-matched start) as an `LmsrMarket` mode. Plain LMSR routed
+      through the same generic `_costAt`/`_setVault`/`_minVault` helpers and stays
+      byte-for-byte behaviorally identical (141 prior tests unchanged).
+- [x] **2.4** Setup-tab control (LMSR vs LS-LMSR + sensitivity %) wired through
+      `createMarket` → `DualMarket.init` → engine; mode/α/seed in serialize/load
+      (+initConfig for UI restore); UI engine labels relabel to "LS-LMSR" when
+      active. Added 23-assertion LS-LMSR suite. **164 tests pass.**
+
+### LS-LMSR locked design (pure Othman b = α·ΣQ)
+
+User chose **pure** (`b = α·Σqᵢ`) + **setup α slider** + display decision left to me.
+
+Pure `b=α·Σq` is degenerate at `q=0`, so the engine carries a **uniform phantom
+share seed** `seed` (per-bin), separate from trader holdings:
+
+- `positions[i]` = aggregate **trader** shares `qᵢ` (starts 0, same as plain LMSR).
+- `seed` = uniform phantom shares the market maker holds (the LP lever).
+- Effective quantities `Qᵢ = seed + positions[i]`; effective `b = α · ΣQ`.
+- `getPool() = C(Q; b)`, `getProbabilities() = softmax(Q/b)` (inner/fair prices,
+  sum to 1 — the **belief**; the LS overround `α·H(p)` per price is *not* added to
+  the displayed probabilities, it manifests as worse trader fills / profitability,
+  which is what the comparison measures). **Display choice: inner softmax.**
+- **α from a "sensitivity" control** mapped so the uniform-point overround
+  `N·α·ln N = sensitivity` ⇒ `α = sensitivity / (N·ln N)` (N-independent knob).
+- **Initial seed = collateral-matched:** choose `seed` so `C(Q₀)=liquidity` at the
+  uniform start (same locked collateral as L2 & plain LMSR). With `Q₀ᵢ=seed`,
+  `C(Q₀)=b·ln N + seed = α·N·seed·ln N + seed = seed·(α·N·ln N + 1) = liquidity`
+  ⇒ `seed = liquidity / (α·N·ln N + 1)`. (Depth at start is *lower* than plain
+  LMSR's `b=liq/ln N`; matching depth instead would blow up collateral — inherent
+  to pure LS-LMSR, documented.)
+- **Vault identity preserved:** every trade grows/shrinks the vault by exactly the
+  net collateral (cost difference), so `getPool()==C(Q)` and conservation hold.
+- **Trades** route through a generic `_costAt(positionsVec)` (recomputes `b` from
+  that vec in LS mode) → buy = monotone bisection on shares; sell = direct cost diff.
+- **LP add(D):** raise `seed` (bisection, monotone) so `C(Q)` grows by `D` (prices
+  drift toward uniform). **remove:** lower `seed`, floored so `seed>0` keeps `b>0`.
+- **Plain LMSR mode unchanged:** `_costAt` uses fixed `this.b`; `_Q()=positions`;
+  LP scales `this.b`. Existing 141 tests still pass (regression-safe).
+- **α=0 / sensitivity=0** is disallowed for LS (degenerate); slider min > 0.
 
 ## Phase 3 — Full review & debugging
 

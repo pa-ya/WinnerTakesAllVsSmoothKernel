@@ -23,15 +23,30 @@ function DualMarket() {
 
 DualMarket.prototype.init = function (N, rangeMin, rangeMax, liquidity, fees, kernelWidth) {
   var kw = (typeof kernelWidth === 'number') ? kernelWidth : DEFAULT_KERNEL_WIDTH;
+
+  // LMSR-family engine mode: 'lmsr' (plain) or 'lslmsr' (pure Othman b = α·ΣQ).
+  // The setup control passes a sensitivity in (0,1]; map it to α = sens/(N·ln N)
+  // so the uniform-point overround N·α·ln N == sensitivity (N-independent knob).
+  var lmsrMode = (fees && fees.lmsrMode === 'lslmsr') ? 'lslmsr' : 'lmsr';
+  var lsSensitivity = (fees && typeof fees.lsSensitivity === 'number' && fees.lsSensitivity > 0)
+    ? fees.lsSensitivity : 0.3;
+  var lsAlpha = lsSensitivity / (N * Math.log(N));
+
   var f = {
     tradeFeeBps: (fees && fees.tradeFeeBps) || 0,
     lpFeeSharePct: (fees && fees.lpFeeSharePct) || 0,
     redemptionFeeBps: (fees && fees.redemptionFeeBps) || 0,
     kernelWidth: kw,
   };
+  // LMSR engine also gets the mode + α; L2 ignores these extra fields.
+  var fLmsr = {
+    tradeFeeBps: f.tradeFeeBps, lpFeeSharePct: f.lpFeeSharePct,
+    redemptionFeeBps: f.redemptionFeeBps, kernelWidth: kw,
+    lmsrMode: lmsrMode, lsAlpha: lsAlpha,
+  };
 
-  this.lmsr = new LmsrMarket(N, rangeMin, rangeMax, liquidity, f);   // LMSR smooth kernel (left)
-  this.l2 = new L2Market(N, rangeMin, rangeMax, liquidity, f);    // L2-norm smooth kernel (right)
+  this.lmsr = new LmsrMarket(N, rangeMin, rangeMax, liquidity, fLmsr);  // LMSR-family (left)
+  this.l2 = new L2Market(N, rangeMin, rangeMax, liquidity, f);          // L2-norm (right)
 
   this.traders = {};
   this.traders['Creator'] = { lmsrWallet: 0, l2Wallet: 0, initialBalance: liquidity };
@@ -39,7 +54,10 @@ DualMarket.prototype.init = function (N, rangeMin, rangeMax, liquidity, fees, ke
   this.initialized = true;
   this.initConfig = {
     N: N, rangeMin: rangeMin, rangeMax: rangeMax, liquidity: liquidity,
-    fees: { tradeFeeBps: f.tradeFeeBps, lpFeeSharePct: f.lpFeeSharePct, redemptionFeeBps: f.redemptionFeeBps },
+    fees: {
+      tradeFeeBps: f.tradeFeeBps, lpFeeSharePct: f.lpFeeSharePct, redemptionFeeBps: f.redemptionFeeBps,
+      lmsrMode: lmsrMode, lsSensitivity: lsSensitivity,
+    },
     kernelWidth: kw,
   };
 

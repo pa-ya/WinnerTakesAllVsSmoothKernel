@@ -43,7 +43,7 @@
      ============================================================ -->
 <div class="formula-banner">
   <span class="formula-current">
-    <span class="formula-label">LMSR price:</span>
+    <span class="formula-label js-lmsr-name">LMSR price:</span>
     p<sub>i</sub> = e<sup>q<sub>i</sub>/b</sup> / &Sigma; e<sup>q<sub>j</sub>/b</sup>
   </span>
   <span class="formula-sep">|</span>
@@ -109,6 +109,19 @@
           <label class="control-label">Kernel Width (W)</label>
           <input type="number" class="control-input" id="setupKernelWidth" value="3" min="0">
           <span class="control-value" style="font-size:0.68rem; color:var(--text-muted)">Settlement kernel (both markets)</span>
+        </div>
+        <div class="control-group">
+          <label class="control-label">LMSR Variant (left engine)</label>
+          <select class="control-input" id="setupLmsrMode" onchange="onLmsrModeChange(this)">
+            <option value="lmsr" selected>LMSR (fixed b)</option>
+            <option value="lslmsr">LS-LMSR (liquidity-sensitive)</option>
+          </select>
+          <span class="control-value" style="font-size:0.68rem; color:var(--text-muted)">Right engine is always L2-norm</span>
+        </div>
+        <div class="control-group" id="setupLsSensitivityGroup" style="display:none;">
+          <label class="control-label">LS-LMSR Sensitivity (%)</label>
+          <input type="number" class="control-input" id="setupLsSensitivity" value="30" min="1" max="80">
+          <span class="control-value" style="font-size:0.68rem; color:var(--text-muted)">Overround/vig at uniform: α = sens / (N·ln N)</span>
         </div>
         <div class="control-group">
           <label class="control-label">Question (optional)</label>
@@ -238,7 +251,7 @@
     <div class="dual-charts" id="distCharts">
       <div class="chart-panel panel-current" id="distChartPanelCurrent">
         <div class="chart-panel-header">
-          <span class="chart-panel-title">LMSR (Logarithmic MSR)</span>
+          <span class="chart-panel-title js-lmsr-name">LMSR (Logarithmic MSR)</span>
           <div class="chart-toggles">
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','prob',this.checked)"><span class="curve-dot" style="background:var(--primary)"></span> Probability</label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','pos',this.checked)"><span class="curve-dot" style="background:var(--warning)"></span> Holdings</label>
@@ -264,7 +277,7 @@
         <div class="chart-panel-header">
           <span class="chart-panel-title">Combined Comparison</span>
           <div class="chart-toggles">
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cProb',this.checked)"><span class="curve-dot" style="background:var(--primary)"></span> <span style="color:var(--primary-light)">LMSR P</span></label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cProb',this.checked)"><span class="curve-dot" style="background:var(--primary)"></span> <span class="js-lmsr-name" style="color:var(--primary-light)">LMSR P</span></label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','iProb',this.checked)"><span class="curve-dot" style="background:var(--accent)"></span> <span style="color:var(--accent)">L2-norm P</span></label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','pos',this.checked)"><span class="curve-dot" style="background:var(--warning)"></span> Holdings</label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cPreview',this.checked)"><span class="curve-dot" style="background:var(--primary);opacity:0.6"></span> <span style="color:var(--primary-light)">C Preview</span></label>
@@ -365,7 +378,7 @@
       <div class="dual-charts" id="lpPayoutCharts">
         <div class="chart-panel panel-current" id="lpPayoutPanelCurrent">
           <div class="chart-panel-header">
-            <span class="chart-panel-title">LMSR — LP Payout</span>
+            <span class="chart-panel-title js-lmsr-name">LMSR — LP Payout</span>
             <button class="btn-reset-zoom" onclick="resetZoom('lpPayoutCurrentChart')" title="Reset zoom">&#x21BA;</button>
           </div>
           <div class="chart-container"><canvas id="lpPayoutCurrentChart"></canvas></div>
@@ -439,7 +452,7 @@
       <div class="dual-charts" id="lpSimCharts">
         <div class="chart-panel panel-current" id="lpSimPanelCurrent">
           <div class="chart-panel-header">
-            <span class="chart-panel-title">LMSR — LP E[PnL] vs Trader Count</span>
+            <span class="chart-panel-title js-lmsr-name">LMSR — LP E[PnL] vs Trader Count</span>
           </div>
           <div class="chart-container"><canvas id="lpSimCurrentChart"></canvas></div>
         </div>
@@ -568,7 +581,7 @@
       <div class="dual-charts" id="payoutAnalysisCharts">
         <div class="chart-panel panel-current" id="payoutAnalysisPanelCurrent">
           <div class="chart-panel-header">
-            <span class="chart-panel-title">LMSR</span>
+            <span class="chart-panel-title js-lmsr-name">LMSR</span>
           </div>
           <div class="chart-container"><canvas id="payoutAnalysisCurrentChart"></canvas></div>
         </div>
@@ -1816,6 +1829,26 @@ function getSelectedBins() {
   return parseInt(sel.value, 10);
 }
 
+// Show the LS-LMSR sensitivity input only when the LS-LMSR variant is selected.
+function onLmsrModeChange(sel) {
+  var grp = document.getElementById('setupLsSensitivityGroup');
+  if (grp) grp.style.display = (sel.value === 'lslmsr') ? '' : 'none';
+}
+
+// Relabel the left engine across the UI as "LS-LMSR" when that variant is active.
+// Caches each label's original "LMSR…" text in data-base so repeated calls (and
+// switching markets back to plain LMSR) stay correct.
+function updateEngineLabels() {
+  var isLs = dualMarket && dualMarket.initConfig && dualMarket.initConfig.fees &&
+    dualMarket.initConfig.fees.lmsrMode === 'lslmsr';
+  var els = document.querySelectorAll('.js-lmsr-name');
+  for (var i = 0; i < els.length; i++) {
+    var base = els[i].getAttribute('data-base');
+    if (base === null) { base = els[i].textContent; els[i].setAttribute('data-base', base); }
+    els[i].textContent = isLs ? base.replace('LMSR', 'LS-LMSR') : base;
+  }
+}
+
 // ============================================================
 // MARKET CREATION
 // ============================================================
@@ -1840,6 +1873,8 @@ function createMarket() {
   var tradeFeeBps = parseInt(document.getElementById('setupTradeFeeBps').value, 10) || 0;
   var lpFeeSharePct = parseInt(document.getElementById('setupLpFeeSharePct').value, 10) || 0;
   var redemptionFeeBps = parseInt(document.getElementById('setupRedemptionFeeBps').value, 10) || 0;
+  var lmsrMode = document.getElementById('setupLmsrMode').value === 'lslmsr' ? 'lslmsr' : 'lmsr';
+  var lsSensitivity = (parseFloat(document.getElementById('setupLsSensitivity').value) || 30) / 100;
 
   // Validate
   if (!N || isNaN(N) || N < 2) return showToast('Bins must be >= 2', 'error');
@@ -1849,6 +1884,7 @@ function createMarket() {
   if (isNaN(kernelWidth) || kernelWidth < 0) return showToast('Kernel width must be >= 0', 'error');
   if (kernelWidth >= N) showToast('Warning: kernel width >= bins (extreme smoothing)', 'info');
   if (kernelWidth === 0) showToast('Note: W=0 makes settlement winner-takes-all (only the winning bin pays)', 'info');
+  if (lmsrMode === 'lslmsr' && (isNaN(lsSensitivity) || lsSensitivity <= 0)) return showToast('LS-LMSR sensitivity must be > 0', 'error');
 
   // Init dual market
   dualMarket = new DualMarket();
@@ -1856,7 +1892,11 @@ function createMarket() {
     tradeFeeBps: tradeFeeBps,
     lpFeeSharePct: lpFeeSharePct,
     redemptionFeeBps: redemptionFeeBps,
+    lmsrMode: lmsrMode,
+    lsSensitivity: lsSensitivity,
   }, kernelWidth);
+  if (lmsrMode === 'lslmsr') showToast('Left engine: LS-LMSR (sensitivity ' + Math.round(lsSensitivity * 100) + '%)', 'info');
+  updateEngineLabels();
 
   // Re-register all traders from persistent registry (with fresh wallets)
   registerTradersWithMarket();
@@ -3588,6 +3628,13 @@ function loadMarketState() {
     document.getElementById('setupTradeFeeBps').value = cfg.fees.tradeFeeBps;
     document.getElementById('setupLpFeeSharePct').value = cfg.fees.lpFeeSharePct;
     document.getElementById('setupRedemptionFeeBps').value = cfg.fees.redemptionFeeBps;
+    var loadedMode = (cfg.fees.lmsrMode === 'lslmsr') ? 'lslmsr' : 'lmsr';
+    document.getElementById('setupLmsrMode').value = loadedMode;
+    if (typeof cfg.fees.lsSensitivity === 'number') {
+      document.getElementById('setupLsSensitivity').value = Math.round(cfg.fees.lsSensitivity * 100);
+    }
+    onLmsrModeChange(document.getElementById('setupLmsrMode'));
+    updateEngineLabels();
 
     document.getElementById('distMuSlider').min = cfg.rangeMin;
     document.getElementById('distMuSlider').max = cfg.rangeMax;

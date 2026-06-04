@@ -37,6 +37,10 @@ redemption), and LP share accounting.
 
 ### LMSR (Logarithmic Market Scoring Rule)
 
+The left engine has two selectable variants (set in the Setup tab):
+
+**LMSR (fixed `b`)** — the default:
+
 - **Cost function**: `C(q; b) = b · ln Σ exp(qᵢ / b)`; a buy of `Δq` shares costs
   `C(q + Δq) − C(q)`
 - **Probability**: `pᵢ = softmax(qᵢ / b)`
@@ -46,10 +50,25 @@ redemption), and LP share accounting.
 - **Liquidity provision**: add/remove scales `b` (deeper/shallower market), which
   drifts live prices toward/away from uniform; trader holdings are untouched
 
+**LS-LMSR (liquidity-sensitive, pure Othman `b = α·ΣQ`)**:
+
+- Liquidity parameter grows with traded volume: `b = α · ΣQ`, where `Q = seed +
+  positions` includes a uniform phantom-share `seed` (so `b > 0` even before any
+  trades). `α = sensitivity / (N · ln N)` from the Setup "Sensitivity (%)" control
+  (the uniform-point overround/vig).
+- **Pool / vault**: `C(Q; b)`; the initial `seed` is collateral-matched so the LS
+  market also locks exactly `liquidity` at the uniform start.
+- **Probability (display)**: `softmax(Q / b)` — the belief. The LS overround shows
+  up as worse trader fills / profitability, not in the displayed probabilities.
+- **Liquidity provision**: add/remove scales `seed` (deeper/shallower), floored so
+  `seed > 0`. Every trade still moves the vault by exactly the net collateral.
+
 ## Features
 
 ### Setup Tab
 - Configure market parameters: number of bins (16–1024+), value range, initial liquidity
+- **LMSR variant** (left engine): plain LMSR or LS-LMSR, with an LS-LMSR sensitivity
+  control (right engine is always L2-norm)
 - Adjustable settlement kernel width (`W`) — applies to both engines
 - Fee configuration: trade fees (bps), LP fee share (%), redemption fees (bps)
 - Create multiple named traders with individual wallet balances

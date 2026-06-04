@@ -418,6 +418,90 @@
   assert(de.lmsr.addLiquidity('a', 10).error, 'addLiquidity after resolve errors');
 
   // ============================================================
+  // 23. LS-LMSR mode (pure Othman b = α·ΣQ)
+  // ============================================================
+  suite('23. LS-LMSR mode');
+  var lsAlpha = 0.3 / (N * Math.log(N));
+  function freshLs(fees) {
+    var f = { tradeFeeBps: 0, lmsrMode: 'lslmsr', lsAlpha: lsAlpha };
+    for (var k in (fees || {})) f[k] = fees[k];
+    return new LmsrMarket(N, 0, 100, L, f);
+  }
+  // init: collateral-matched, uniform, seed>0
+  var ls = freshLs();
+  globalTraders = { t: { wallet: 1e9 }, lp: { wallet: 1e9 } };
+  assert(ls.mode === 'lslmsr', 'mode flag set');
+  assert(near(ls.getPool(), L, 1), 'LS init vault = liquidity (collateral-matched)');
+  var lsP = ls.getProbabilities();
+  assert(near(sumArray(lsP), 1, 1e-9) && near(lsP[0], 1 / N, 1e-9), 'LS init uniform prices, sum 1');
+  assert(ls.seed > 0 && ls.alpha > 0, 'LS seed>0 and alpha>0');
+  assert(near(ls.alpha, lsAlpha, 1e-15), 'LS alpha stored as given');
+  // buy grows vault by net; raises price; reversible at 0 fee
+  var lsPool0 = ls.getPool();
+  var lsRb = ls.discreteBuy('t', 8, 5000);
+  assert(near(ls.getPool() - lsPool0, 5000, 0.01), 'LS buy grows vault by exactly net');
+  assert(lsRb.tokensOut > 0 && ls.getProbabilities()[8] > 1 / N, 'LS buy positive tokens, raises bin');
+  var lsRs = ls.discreteSell('t', 8, lsRb.tokensOut);
+  assert(near(lsRs.grossOut, 5000, 0.01) && near(ls.getPool(), lsPool0, 0.01), 'LS 0-fee buy/sell reversible');
+  // LS differs from plain LMSR for the same spend
+  globalTraders = { t: { wallet: 1e9 } };
+  var plainOne = new LmsrMarket(N, 0, 100, L, { tradeFeeBps: 0 });
+  var tPlain = plainOne.discreteBuy('t', 8, 5000).tokensOut;
+  globalTraders = { t: { wallet: 1e9 } };
+  var tLs = freshLs().discreteBuy('t', 8, 5000).tokensOut;
+  assert(Math.abs(tPlain - tLs) > 1, 'LS-LMSR and plain LMSR yield different tokens for same spend');
+  // LP add: vault grows by deposit, seed up, prices flatten toward uniform
+  globalTraders = { t: { wallet: 1e9 }, lp: { wallet: 1e9 } };
+  var ls2 = freshLs();
+  ls2.discreteBuy('t', 8, 25000);
+  var seedB = ls2.seed, poolB = ls2.getPool(), peakB = maxArray(ls2.getProbabilities());
+  var lsAdd = ls2.addLiquidity('lp', 30000);
+  assert(near(ls2.getPool() - poolB, 30000, 0.5), 'LS LP add grows vault by deposit');
+  assert(ls2.seed > seedB, 'LS LP add raises seed (deeper)');
+  assert(maxArray(ls2.getProbabilities()) < peakB, 'LS LP add flattens prices toward uniform');
+  assert(lsAdd.sharesReceived > 0, 'LS LP add issues shares');
+  // LP remove: vault drops by collateralOut, floored above min vault
+  var poolR = ls2.getPool();
+  var lsRem = ls2.removeLiquidity('lp', 15000);
+  assert(near(ls2.getPool(), poolR - lsRem.collateralOut, 0.5), 'LS LP remove drops vault by collateralOut');
+  assert(ls2.seed > 0, 'LS seed stays > 0 after remove (solvency floor)');
+  // LP preview parity (add + remove), incl. fees
+  globalTraders = { t: { wallet: 1e9 }, lp: { wallet: 1e9 } };
+  var ls3 = freshLs({ tradeFeeBps: 30, lpFeeSharePct: 50 });
+  ls3.distributionBuy('t', 55, 9, 8000);
+  var apv = ls3.previewAddLiquidity('lp', 5000);
+  var apx = ls3.addLiquidity('lp', 5000);
+  assert(near(apv.sharesReceived, apx.sharesReceived, 0.01) && near(apv.newPool, ls3.getPool(), 0.5), 'LS add preview == executed');
+  var rpv = ls3.previewRemoveLiquidity('lp', 3000);
+  var rpx = ls3.removeLiquidity('lp', 3000);
+  assert(near(rpv.collateralOut, rpx.collateralOut, 0.5) && near(rpv.sharesBurned, rpx.sharesBurned, 0.01), 'LS remove preview == executed');
+  // solvency: claimScale <= 1 at every winning bin after skewed trades
+  var ls4 = freshLs({ tradeFeeBps: 50, lpFeeSharePct: 40, redemptionFeeBps: 30, kernelWidth: 3 });
+  globalTraders = { t: { wallet: 1e9 }, u: { wallet: 1e9 } };
+  ls4.distributionBuy('t', 35, 7, 60000);
+  ls4.distributionBuy('u', 75, 6, 90000);
+  var lsWorst = 0;
+  for (var w = 0; w < N; w++) { var rr = ls4.resolve((w + 0.5) * 100 / N); lsWorst = Math.max(lsWorst, rr.claimScale); ls4.resolved = false; }
+  assert(lsWorst <= 1 + 1e-9, 'LS claimScale <= 1 at all win bins (solvent)');
+  // resolve conservation: pool + accLpFees == Σ payouts
+  var ls5 = freshLs({ tradeFeeBps: 40, lpFeeSharePct: 50, redemptionFeeBps: 20, kernelWidth: 2 });
+  globalTraders = { t: { wallet: 1e9 }, u: { wallet: 1e9 } };
+  ls5.distributionBuy('t', 45, 8, 50000);
+  ls5.distributionBuy('u', 60, 10, 40000);
+  var ls5PoolPlusFees = ls5.getPool() + ls5.accumulatedLpFees;
+  var ls5res = ls5.resolve(50);
+  var ls5paid = 0; for (var pi = 0; pi < ls5res.payouts.length; pi++) ls5paid += ls5res.payouts[pi].payout;
+  assert(near(ls5PoolPlusFees, ls5paid, 0.5), 'LS resolve conservation: pool + accLpFees == Σ payouts');
+  // serialize roundtrip preserves mode/alpha/seed/positions
+  var lsd = new DualMarket(); lsd.init(N, 0, 100, L, { tradeFeeBps: 0, lmsrMode: 'lslmsr', lsSensitivity: 0.3 }, 3); lsd.addTrader('a', 1e9);
+  lsd.distributionBuy('a', 50, 9, 9000); lsd.addLiquidity('Creator', 4000);
+  var lsjson = lsd.serialize(); var lsd2 = DualMarket.loadFromSave(lsjson);
+  assert(lsd2.lmsr.mode === 'lslmsr', 'LS mode survives serialize');
+  assert(near(lsd2.lmsr.seed, lsd.lmsr.seed, 1e-6) && near(lsd2.lmsr.alpha, lsd.lmsr.alpha, 1e-15), 'LS seed+alpha survive serialize');
+  assert(near(lsd2.lmsr.getPool(), lsd.lmsr.getPool(), 0.01), 'LS pool survives serialize');
+  assert(lsd2.initConfig.fees.lmsrMode === 'lslmsr' && near(lsd2.initConfig.fees.lsSensitivity, 0.3, 1e-9), 'LS initConfig fees survive (UI restore)');
+
+  // ============================================================
   // SUMMARY
   // ============================================================
   log('<div class="summary">' + pass + ' passed, ' + fail + ' failed</div>');
