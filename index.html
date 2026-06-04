@@ -43,12 +43,17 @@
      ============================================================ -->
 <div class="formula-banner">
   <span class="formula-current">
-    <span class="formula-label">Current (WTA):</span>
-    Payout = holdings[win]
+    <span class="formula-label">LMSR price:</span>
+    p<sub>i</sub> = e<sup>q<sub>i</sub>/b</sup> / &Sigma; e<sup>q<sub>j</sub>/b</sup>
   </span>
   <span class="formula-sep">|</span>
   <span class="formula-improved">
-    <span class="formula-label">Improved (Kernel):</span>
+    <span class="formula-label">L2-norm price:</span>
+    p<sub>i</sub> = x<sub>i</sub> / &Sigma; x<sub>j</sub>
+  </span>
+  <span class="formula-sep">|</span>
+  <span class="formula-current">
+    <span class="formula-label">Shared settlement:</span>
     Payout = &Sigma;(holdings<sub>i</sub> &middot; K(i,win,W)) &middot; s
   </span>
 </div>
@@ -103,7 +108,7 @@
         <div class="control-group">
           <label class="control-label">Kernel Width (W)</label>
           <input type="number" class="control-input" id="setupKernelWidth" value="3" min="0">
-          <span class="control-value" style="font-size:0.68rem; color:var(--text-muted)">Improved market only</span>
+          <span class="control-value" style="font-size:0.68rem; color:var(--text-muted)">Settlement kernel (both markets)</span>
         </div>
         <div class="control-group">
           <label class="control-label">Question (optional)</label>
@@ -233,7 +238,7 @@
     <div class="dual-charts" id="distCharts">
       <div class="chart-panel panel-current" id="distChartPanelCurrent">
         <div class="chart-panel-header">
-          <span class="chart-panel-title">Current (Quadratic WTA)</span>
+          <span class="chart-panel-title">LMSR (Logarithmic MSR)</span>
           <div class="chart-toggles">
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','prob',this.checked)"><span class="curve-dot" style="background:var(--primary)"></span> Probability</label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCurrentChart','pos',this.checked)"><span class="curve-dot" style="background:var(--warning)"></span> Holdings</label>
@@ -245,7 +250,7 @@
       </div>
       <div class="chart-panel panel-improved" id="distChartPanelImproved">
         <div class="chart-panel-header">
-          <span class="chart-panel-title">Improved (Linear Kernel)</span>
+          <span class="chart-panel-title">L2-norm (Hypersphere AMM)</span>
           <div class="chart-toggles">
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','prob',this.checked)"><span class="curve-dot" style="background:var(--accent)"></span> Probability</label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distImprovedChart','pos',this.checked)"><span class="curve-dot" style="background:var(--warning)"></span> Holdings</label>
@@ -259,8 +264,8 @@
         <div class="chart-panel-header">
           <span class="chart-panel-title">Combined Comparison</span>
           <div class="chart-toggles">
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cProb',this.checked)"><span class="curve-dot" style="background:var(--primary)"></span> <span style="color:var(--primary-light)">Current P</span></label>
-            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','iProb',this.checked)"><span class="curve-dot" style="background:var(--accent)"></span> <span style="color:var(--accent)">Improved P</span></label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cProb',this.checked)"><span class="curve-dot" style="background:var(--primary)"></span> <span style="color:var(--primary-light)">LMSR P</span></label>
+            <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','iProb',this.checked)"><span class="curve-dot" style="background:var(--accent)"></span> <span style="color:var(--accent)">L2-norm P</span></label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','pos',this.checked)"><span class="curve-dot" style="background:var(--warning)"></span> Holdings</label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','cPreview',this.checked)"><span class="curve-dot" style="background:var(--primary);opacity:0.6"></span> <span style="color:var(--primary-light)">C Preview</span></label>
             <label class="chart-toggle"><input type="checkbox" checked onchange="toggleDataset('distCombinedChart','iPreview',this.checked)"><span class="curve-dot" style="background:var(--accent);opacity:0.6"></span> <span style="color:var(--accent)">I Preview</span></label>
@@ -275,11 +280,11 @@
     <!-- Trade Preview Stats (dynamically updated with preview curve) -->
     <div class="dual-stats" id="distPreviewStats" style="display:none;">
       <div class="stats-panel" style="border-top: 2px solid var(--purple);">
-        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">Trade Preview — Current (WTA)</div>
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">Trade Preview — LMSR</div>
         <div class="result-grid" id="distPreviewCurrentGrid"></div>
       </div>
       <div class="stats-panel" style="border-top: 2px solid var(--purple);">
-        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">Trade Preview — Improved (Kernel)</div>
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">Trade Preview — L2-norm</div>
         <div class="result-grid" id="distPreviewImprovedGrid"></div>
       </div>
     </div>
@@ -341,11 +346,11 @@
     <!-- LP Preview Stats -->
     <div class="dual-stats" id="lpPreviewStats">
       <div class="stats-panel" style="border-top: 2px solid var(--purple);">
-        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">LP Preview — Current (WTA)</div>
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">LP Preview — LMSR</div>
         <div id="lpPreviewCurrentGrid"></div>
       </div>
       <div class="stats-panel" style="border-top: 2px solid var(--purple);">
-        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">LP Preview — Improved (Kernel)</div>
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--purple);margin-bottom:8px;">LP Preview — L2-norm</div>
         <div id="lpPreviewImprovedGrid"></div>
       </div>
     </div>
@@ -360,14 +365,14 @@
       <div class="dual-charts" id="lpPayoutCharts">
         <div class="chart-panel panel-current" id="lpPayoutPanelCurrent">
           <div class="chart-panel-header">
-            <span class="chart-panel-title">Current (WTA) — LP Payout</span>
+            <span class="chart-panel-title">LMSR — LP Payout</span>
             <button class="btn-reset-zoom" onclick="resetZoom('lpPayoutCurrentChart')" title="Reset zoom">&#x21BA;</button>
           </div>
           <div class="chart-container"><canvas id="lpPayoutCurrentChart"></canvas></div>
         </div>
         <div class="chart-panel panel-improved" id="lpPayoutPanelImproved">
           <div class="chart-panel-header">
-            <span class="chart-panel-title">Improved (Kernel) — LP Payout</span>
+            <span class="chart-panel-title">L2-norm — LP Payout</span>
             <button class="btn-reset-zoom" onclick="resetZoom('lpPayoutImprovedChart')" title="Reset zoom">&#x21BA;</button>
           </div>
           <div class="chart-container"><canvas id="lpPayoutImprovedChart"></canvas></div>
@@ -385,11 +390,11 @@
     <!-- LP Position Stats -->
     <div class="dual-stats" id="lpStats">
       <div class="stats-panel">
-        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--primary-light);margin-bottom:8px;">LP Position — Current (WTA)</div>
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--primary-light);margin-bottom:8px;">LP Position — LMSR</div>
         <div class="result-grid" id="lpStatsCurrentGrid"></div>
       </div>
       <div class="stats-panel">
-        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);margin-bottom:8px;">LP Position — Improved (Kernel)</div>
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);margin-bottom:8px;">LP Position — L2-norm</div>
         <div class="result-grid" id="lpStatsImprovedGrid"></div>
       </div>
     </div>
@@ -402,11 +407,11 @@
     <div class="collapsible-body">
       <div class="dual-stats" id="lpCombinedTraderStats">
         <div class="stats-panel">
-          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--primary-light);margin-bottom:8px;">Total Position — Current</div>
+          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--primary-light);margin-bottom:8px;">Total Position — LMSR</div>
           <div class="result-grid" id="lpCombinedCurrentGrid"></div>
         </div>
         <div class="stats-panel">
-          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);margin-bottom:8px;">Total Position — Improved</div>
+          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);margin-bottom:8px;">Total Position — L2-norm</div>
           <div class="result-grid" id="lpCombinedImprovedGrid"></div>
         </div>
       </div>
@@ -434,13 +439,13 @@
       <div class="dual-charts" id="lpSimCharts">
         <div class="chart-panel panel-current" id="lpSimPanelCurrent">
           <div class="chart-panel-header">
-            <span class="chart-panel-title">Current — LP E[PnL] vs Trader Count</span>
+            <span class="chart-panel-title">LMSR — LP E[PnL] vs Trader Count</span>
           </div>
           <div class="chart-container"><canvas id="lpSimCurrentChart"></canvas></div>
         </div>
         <div class="chart-panel panel-improved" id="lpSimPanelImproved">
           <div class="chart-panel-header">
-            <span class="chart-panel-title">Improved — LP E[PnL] vs Trader Count</span>
+            <span class="chart-panel-title">L2-norm — LP E[PnL] vs Trader Count</span>
           </div>
           <div class="chart-container"><canvas id="lpSimImprovedChart"></canvas></div>
         </div>
@@ -563,13 +568,13 @@
       <div class="dual-charts" id="payoutAnalysisCharts">
         <div class="chart-panel panel-current" id="payoutAnalysisPanelCurrent">
           <div class="chart-panel-header">
-            <span class="chart-panel-title">Current (WTA)</span>
+            <span class="chart-panel-title">LMSR</span>
           </div>
           <div class="chart-container"><canvas id="payoutAnalysisCurrentChart"></canvas></div>
         </div>
         <div class="chart-panel panel-improved" id="payoutAnalysisPanelImproved">
           <div class="chart-panel-header">
-            <span class="chart-panel-title">Improved (Kernel)</span>
+            <span class="chart-panel-title">L2-norm</span>
           </div>
           <div class="chart-container"><canvas id="payoutAnalysisImprovedChart"></canvas></div>
         </div>
@@ -1457,7 +1462,7 @@ function refreshCombinedDistStats(traderName) {
 
 function buildComparisonTableHtml(cp, ip) {
   var rows = [
-    { label: 'Vault (k)', c: dualMarket.current.k, i: dualMarket.improved.k, style: '' },
+    { label: 'Vault', c: dualMarket.current.getPool(), i: dualMarket.improved.getPool(), style: '' },
     { label: 'Wallet', c: cp.wallet, i: ip.wallet, style: '' },
     { label: 'Holdings', c: cp.totalHoldings, i: ip.totalHoldings, style: '' },
     { label: 'E[Payout]', c: cp.expectedPayout, i: ip.expectedPayout, style: '' },
@@ -1469,8 +1474,8 @@ function buildComparisonTableHtml(cp, ip) {
 
   var html = '<thead><tr>' +
     '<th>Metric</th>' +
-    '<th style="color:var(--primary-light)">Current (WTA)</th>' +
-    '<th style="color:var(--accent)">Improved (Kernel)</th>' +
+    '<th style="color:var(--primary-light)">LMSR</th>' +
+    '<th style="color:var(--accent)">L2-norm</th>' +
     '<th>Delta (I\u2212C)</th>' +
     '</tr></thead><tbody>';
 
@@ -1839,7 +1844,7 @@ function createMarket() {
   if (isNaN(liquidity) || liquidity <= 0) return showToast('Liquidity must be > 0', 'error');
   if (isNaN(kernelWidth) || kernelWidth < 0) return showToast('Kernel width must be >= 0', 'error');
   if (kernelWidth >= N) showToast('Warning: kernel width >= bins (extreme smoothing)', 'info');
-  if (kernelWidth === 0) showToast('Note: W=0 makes improved identical to WTA', 'info');
+  if (kernelWidth === 0) showToast('Note: W=0 makes settlement winner-takes-all (only the winning bin pays)', 'info');
 
   // Init dual market
   dualMarket = new DualMarket();
@@ -2311,11 +2316,11 @@ function refreshDistStats(traderName) {
   var ip = portfolios.improved;
 
   function statsHtml(p, engine) {
-    var k = engine === 'current' ? dualMarket.current.k : dualMarket.improved.k;
+    var k = engine === 'current' ? dualMarket.current.getPool() : dualMarket.improved.getPool();
     var pnlClass = p.unrealizedPnL >= 0 ? 'positive' : 'negative';
     var epClass = p.expectedPayout > p.totalSpent ? 'positive' : (p.expectedPayout < p.totalSpent && p.totalSpent > 0 ? 'negative' : '');
     return '' +
-      '<div class="result-item"><div class="result-label">Vault (k)</div><div class="result-value">' + formatCompact(k) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Vault</div><div class="result-value">' + formatCompact(k) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Wallet</div><div class="result-value">' + formatCompact(p.wallet) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Holdings</div><div class="result-value">' + formatCompact(p.totalHoldings) + '</div></div>' +
       '<div class="result-item"><div class="result-label">E[Payout]</div><div class="result-value ' + epClass + '">' + formatCompact(p.expectedPayout) + '</div></div>' +
@@ -2329,30 +2334,11 @@ function refreshDistStats(traderName) {
   if (iGrid) iGrid.innerHTML = statsHtml(ip, 'improved');
 }
 
+// Non-mutating preview that matches the engine's real distributionBuy exactly
+// (L2-norm or LMSR). Returns { tokensPerBin, totalTokens, peakPayout, peakBin,
+// fee, cost } or null.
 function computeDistPreview(engine, mu, sigma, amount) {
-  var W = engine._computeWeights(mu, sigma);
-  if (!W) return null;
-
-  var XW = 0, W2 = 0;
-  for (var j = 0; j < engine.N; j++) {
-    XW += engine.positions[j] * W[j];
-    W2 += W[j] * W[j];
-  }
-
-  // Match the engine: deduct trade fee from gross collateral
-  var fee = Math.floor(amount * engine.tradeFeeBps / 10000);
-  var net = amount - fee;
-  var kNew = engine.k + net;
-  var excess = kNew * kNew - engine.k * engine.k;
-  var disc = XW * XW + W2 * excess;
-  if (disc < 0) return null;
-  var lambda = Math.sqrt(disc) - XW;
-
-  var tokensPerBin = [];
-  for (var j = 0; j < engine.N; j++) {
-    tokensPerBin.push((lambda * W[j]) / W2);
-  }
-  return tokensPerBin;
+  return engine.previewDistributionBuy(mu, sigma, amount);
 }
 
 function updateDistPreview() {
@@ -2374,21 +2360,21 @@ function updateDistPreview() {
   if (chartMode === 'combined') {
     var xc = charts['distCombinedChart'];
     if (xc) {
-      xc.data.datasets[3].data = cPreview || empty;
-      xc.data.datasets[4].data = iPreview || empty;
+      xc.data.datasets[3].data = cPreview ? cPreview.tokensPerBin : empty;
+      xc.data.datasets[4].data = iPreview ? iPreview.tokensPerBin : empty;
       syncChartYAxes(xc);
       xc.update('none');
     }
   } else {
     var cc = charts['distCurrentChart'];
     if (cc && cc.data.datasets[2]) {
-      cc.data.datasets[2].data = cPreview || empty;
+      cc.data.datasets[2].data = cPreview ? cPreview.tokensPerBin : empty;
       syncChartYAxes(cc);
       cc.update('none');
     }
     var ic = charts['distImprovedChart'];
     if (ic && ic.data.datasets[2]) {
-      ic.data.datasets[2].data = iPreview || empty;
+      ic.data.datasets[2].data = iPreview ? iPreview.tokensPerBin : empty;
       syncChartYAxes(ic);
       ic.update('none');
     }
@@ -2424,55 +2410,26 @@ function updatePreviewStats(cPreviewArg, iPreviewArg) {
     return;
   }
 
-  var amount = parseFloat(document.getElementById('distAmount').value);
   var labels = dualMarket.current.getLabels();
-  var N = dualMarket.current.N;
-  var fee = Math.floor(amount * dualMarket.current.tradeFeeBps / 10000);
 
-  // Current (WTA) stats
-  var cTotal = 0, cMax = 0, cPeakBin = 0;
-  for (var j = 0; j < N; j++) {
-    cTotal += cPreview[j];
-    if (cPreview[j] > cMax) { cMax = cPreview[j]; cPeakBin = j; }
-  }
-  var cMaxPayout = cMax * (1 - dualMarket.current.redemptionFeeBps / 10000);
-
-  // Improved (Kernel) stats — O(N×W) peak search
-  var iTotal = 0, iMaxPayout = 0, iPeakBin = 0;
-  for (var j = 0; j < N; j++) iTotal += iPreview[j];
-  var KW = dualMarket.improved.kernelWidth;
-  for (var w = 0; w < N; w++) {
-    var payoutW = 0;
-    var lo = Math.max(0, w - KW);
-    var hi = Math.min(N - 1, w + KW);
-    for (var jj = lo; jj <= hi; jj++) {
-      payoutW += iPreview[jj] * (1 - Math.abs(jj - w) / (KW + 1));
-    }
-    if (payoutW > iMaxPayout) { iMaxPayout = payoutW; iPeakBin = w; }
-  }
-  iMaxPayout *= (1 - dualMarket.improved.redemptionFeeBps / 10000);
+  // Stats come straight from the engine previews (LMSR / L2-norm), so they match
+  // the executed trade exactly — both use the shared kernel-weighted peak payout.
+  var cStats = { total: cPreview.totalTokens, maxPayout: cPreview.peakPayout, peakBin: cPreview.peakBin, fee: cPreview.fee, cost: cPreview.cost };
+  var iStats = { total: iPreview.totalTokens, maxPayout: iPreview.peakPayout, peakBin: iPreview.peakBin, fee: iPreview.fee, cost: iPreview.cost };
 
   if (isCombined) {
     if (splitPanel) splitPanel.style.display = 'none';
     if (combinedPanel) {
       combinedPanel.style.display = '';
       var table = document.getElementById('distPreviewComparisonTable');
-      if (table) table.innerHTML = buildPreviewComparisonHtml(
-        { total: cTotal, maxPayout: cMaxPayout, peakBin: cPeakBin, fee: fee, cost: amount },
-        { total: iTotal, maxPayout: iMaxPayout, peakBin: iPeakBin, fee: fee, cost: amount },
-        labels
-      );
+      if (table) table.innerHTML = buildPreviewComparisonHtml(cStats, iStats, labels);
     }
   } else {
     if (combinedPanel) combinedPanel.style.display = 'none';
     if (splitPanel) {
       splitPanel.style.display = '';
-      document.getElementById('distPreviewCurrentGrid').innerHTML = buildPreviewStatsHtml(
-        { total: cTotal, maxPayout: cMaxPayout, peakBin: cPeakBin, fee: fee, cost: amount }, labels
-      );
-      document.getElementById('distPreviewImprovedGrid').innerHTML = buildPreviewStatsHtml(
-        { total: iTotal, maxPayout: iMaxPayout, peakBin: iPeakBin, fee: fee, cost: amount }, labels
-      );
+      document.getElementById('distPreviewCurrentGrid').innerHTML = buildPreviewStatsHtml(cStats, labels);
+      document.getElementById('distPreviewImprovedGrid').innerHTML = buildPreviewStatsHtml(iStats, labels);
     }
   }
   applyStatsMode();
@@ -2503,8 +2460,8 @@ function buildPreviewComparisonHtml(cStats, iStats, labels) {
 
   var html = '<thead><tr>' +
     '<th>Preview</th>' +
-    '<th style="color:var(--primary-light)">Current (WTA)</th>' +
-    '<th style="color:var(--accent)">Improved (Kernel)</th>' +
+    '<th style="color:var(--primary-light)">LMSR</th>' +
+    '<th style="color:var(--accent)">L2-norm</th>' +
     '<th>Delta</th>' +
     '</tr></thead><tbody>';
 
@@ -2853,7 +2810,7 @@ function refreshLpCombinedStats(lpName) {
     { label: 'Unreal. PnL', c: cLp ? cLp.unrealizedPnL : 0, i: iLp ? iLp.unrealizedPnL : 0, style: 'pnl' },
   ];
 
-  var html = '<thead><tr><th></th><th style="color:var(--primary-light)">Current (WTA)</th><th style="color:var(--accent)">Improved (Kernel)</th><th>Delta</th></tr></thead><tbody>';
+  var html = '<thead><tr><th></th><th style="color:var(--primary-light)">LMSR</th><th style="color:var(--accent)">L2-norm</th><th>Delta</th></tr></thead><tbody>';
   for (var r = 0; r < rows.length; r++) {
     var row = rows[r];
     var delta = row.i - row.c;
@@ -2989,7 +2946,7 @@ function updateLpPreview() {
         rows.push({ label: 'Rem: Payout', c: cRemP.totalPayout, i: iRemP.totalPayout });
         rows.push({ label: 'Rem: Fee Share', c: cRemP.feeShare, i: iRemP.feeShare });
       }
-      var html3 = '<thead><tr><th></th><th style="color:var(--primary-light)">Current</th><th style="color:var(--accent)">Improved</th><th>Delta</th></tr></thead><tbody>';
+      var html3 = '<thead><tr><th></th><th style="color:var(--primary-light)">LMSR</th><th style="color:var(--accent)">L2-norm</th><th>Delta</th></tr></thead><tbody>';
       for (var r = 0; r < rows.length; r++) {
         var row = rows[r];
         var delta = row.i - row.c;
@@ -3016,7 +2973,7 @@ function executeLp(action) {
   if (action === 'removeAll') {
     var cLp = dualMarket.current.lpProviders[lpName];
     if (!cLp || cLp.shares <= 0) return showToast('No LP position to remove', 'error');
-    var maxAmount = dualMarket.current.k * cLp.shares / dualMarket.current.totalLpShares;
+    var maxAmount = dualMarket.current.getPool() * cLp.shares / dualMarket.current.totalLpShares;
     result = dualMarket.removeLiquidity(lpName, maxAmount + 1);
     if (result.error) return showToast(result.error, 'error');
     showToast('Removed all LP for ' + lpName, 'success');
@@ -3122,47 +3079,38 @@ function runLpSimulation() {
   var savedGT = globalTraders;
   globalTraders = {};
 
-  var sim = new CurrentMarket(N, cfg.rangeMin, cfg.rangeMax, initLiq, cfg.fees);
-  var kernelWidth = cfg.kernelWidth;
+  // Two independent sim engines — one per AMM — fed identical trades.
+  var simFees = {
+    tradeFeeBps: cfg.fees.tradeFeeBps, lpFeeSharePct: cfg.fees.lpFeeSharePct,
+    redemptionFeeBps: cfg.fees.redemptionFeeBps, kernelWidth: cfg.kernelWidth,
+  };
+  var simC = new LmsrMarket(N, cfg.rangeMin, cfg.rangeMax, initLiq, simFees);  // LMSR
+  var simI = new L2Market(N, cfg.rangeMin, cfg.rangeMax, initLiq, simFees);    // L2-norm
 
   var traderLabels = ['0'];
   var cPnL = [0];
   var iPnL = [0];
-  var totalHoldings = [];
-  for (var j = 0; j < N; j++) totalHoldings.push(0);
 
   for (var t = 0; t < maxTraders; t++) {
     var mu = cfg.rangeMin + ((t + 0.5) / maxTraders) * (cfg.rangeMax - cfg.rangeMin);
     var sigma = (cfg.rangeMax - cfg.rangeMin) / 6;
     var name = '_sim_' + t;
+
     globalTraders[name] = { wallet: avgTradeSize * 10 };
-    var result = sim.distributionBuy(name, mu, sigma, avgTradeSize);
-    if (result.tokensPerBin) {
-      for (var j = 0; j < N; j++) totalHoldings[j] += result.tokensPerBin[j];
-    }
+    simC.distributionBuy(name, mu, sigma, avgTradeSize);
+    globalTraders[name] = { wallet: avgTradeSize * 10 };
+    simI.distributionBuy(name, mu, sigma, avgTradeSize);
 
-    // Compute LP E[PnL] for both market types
-    var cProbs = sim.getProbabilities();
-    var sumPos = 0;
-    for (var j = 0; j < N; j++) sumPos += sim.positions[j];
-
+    // LP E[PnL] = Σ p(bin)·LPpayout(bin) − initial deposit, using each engine's
+    // own probabilities and the shared kernel LP payout curve.
+    var cPort = simC.getAllLpPortfolio();
+    var cProbs = simC.getProbabilities();
+    var iPort = simI.getAllLpPortfolio();
+    var iProbs = simI.getProbabilities();
     var cExp = 0, iExp = 0;
     for (var bin = 0; bin < N; bin++) {
-      // Current (WTA): LP gets k minus trader tokens in winning bin
-      var cLpPayout = (sim.k - totalHoldings[bin]) + sim.accumulatedLpFees;
-      cExp += cProbs[bin] * cLpPayout;
-
-      // Improved (Kernel): LP gets k minus kernel-weighted claim
-      var iProb = sumPos > 0 ? sim.positions[bin] / sumPos : 1 / N;
-      var kernelClaim = 0;
-      var ww = kernelWidth;
-      for (var i = Math.max(0, bin - ww); i <= Math.min(N - 1, bin + ww); i++) {
-        var weight = Math.max(0, 1 - Math.abs(i - bin) / (ww + 1));
-        kernelClaim += totalHoldings[i] * weight;
-      }
-      var claimScale = kernelClaim > sim.k ? sim.k / kernelClaim : 1;
-      var iLpPayout = (sim.k - kernelClaim * claimScale) + sim.accumulatedLpFees;
-      iExp += iProb * iLpPayout;
+      cExp += cProbs[bin] * cPort.payoutPerOutcome[bin];
+      iExp += iProbs[bin] * iPort.payoutPerOutcome[bin];
     }
 
     traderLabels.push(String(t + 1));
@@ -3374,12 +3322,12 @@ function renderResolveSummary(result, value) {
   grid.innerHTML = '' +
     '<div class="result-item"><div class="result-label">Resolve Value</div><div class="result-value">' + value.toFixed(1) + '</div></div>' +
     '<div class="result-item"><div class="result-label">Winning Bin</div><div class="result-value" style="color:var(--success)">' + winBin + ' (' + label + ')</div></div>' +
-    '<div class="result-item"><div class="result-label">Vault (k)</div><div class="result-value">' + formatCompact(dualMarket.current.k) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Solvency Factor</div><div class="result-value ' + solvencyClass + '">' + (result.improved.claimScale * 100).toFixed(2) + '%</div></div>' +
-    '<div class="result-item"><div class="result-label">WTA Trader Payouts</div><div class="result-value" style="color:var(--primary-light)">' + formatCompact(cTraderTotal) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Kernel Trader Payouts</div><div class="result-value" style="color:var(--accent)">' + formatCompact(iTraderTotal) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Current LP Residual</div><div class="result-value" style="color:var(--primary-light)">' + formatCompact(result.current.lpResidual) + '</div></div>' +
-    '<div class="result-item"><div class="result-label">Improved LP Residual</div><div class="result-value" style="color:var(--accent)">' + formatCompact(result.improved.lpResidual) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">LMSR Vault</div><div class="result-value">' + formatCompact(dualMarket.current.getPool()) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">L2 Solvency Factor</div><div class="result-value ' + solvencyClass + '">' + (result.improved.claimScale * 100).toFixed(2) + '%</div></div>' +
+    '<div class="result-item"><div class="result-label">LMSR Trader Payouts</div><div class="result-value" style="color:var(--primary-light)">' + formatCompact(cTraderTotal) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">L2 Trader Payouts</div><div class="result-value" style="color:var(--accent)">' + formatCompact(iTraderTotal) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">LMSR LP Residual</div><div class="result-value" style="color:var(--primary-light)">' + formatCompact(result.current.lpResidual) + '</div></div>' +
+    '<div class="result-item"><div class="result-label">L2 LP Residual</div><div class="result-value" style="color:var(--accent)">' + formatCompact(result.improved.lpResidual) + '</div></div>' +
     '<div class="result-item"><div class="result-label">Trader Delta (I-C)</div><div class="result-value ' + traderDeltaClass + '">' + traderDeltaSign + formatCompact(traderDelta) + '</div></div>';
 }
 
@@ -3388,7 +3336,7 @@ function renderPayoutRow(p, model, separator) {
   var pnlPct = p.spent > 0 ? (p.netPnL / p.spent * 100).toFixed(1) : '0.0';
   var pnlClass = p.netPnL >= 0 ? 'pnl-positive' : 'pnl-negative';
   var pnlSign = p.netPnL >= 0 ? '+' : '';
-  var modelLabel = model === 'current' ? 'WTA' : 'Kernel';
+  var modelLabel = model === 'current' ? 'LMSR' : 'L2-norm';
   var rowClass = 'row-' + model + (separator ? ' row-separator' : '');
 
   return '<tr class="' + rowClass + '">' +
@@ -3478,7 +3426,7 @@ function renderCombinedPayoutTable(result) {
 
     html += '<tr class="row-current">' +
       '<td style="font-weight:700;color:var(--text-heading);text-align:left;">' + name + '</td>' +
-      '<td>WTA</td>' +
+      '<td>LMSR</td>' +
       '<td>' + formatCompact(ct.payout) + '</td>' +
       '<td>' + formatCompact(cl.payout) + '</td>' +
       '<td style="font-weight:700;">' + formatCompact(cTotalPayout) + '</td>' +
@@ -3501,7 +3449,7 @@ function renderCombinedPayoutTable(result) {
 
       html += '<tr class="row-improved' + (isLast ? '' : ' row-separator') + '">' +
         '<td style="font-weight:700;color:var(--text-heading);text-align:left;">' + name + '</td>' +
-        '<td>Kernel</td>' +
+        '<td>L2-norm</td>' +
         '<td>' + formatCompact(it.payout) + '</td>' +
         '<td>' + formatCompact(il.payout) + '</td>' +
         '<td style="font-weight:700;">' + formatCompact(iTotalPayout) + '</td>' +

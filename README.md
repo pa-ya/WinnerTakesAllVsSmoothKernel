@@ -2,62 +2,84 @@
 
 **[Live Demo](https://pydea-rs.github.io/WinnerTakesAllVsSmoothKernel)**
 
-An interactive browser-based playground for comparing two continuous prediction market AMM designs side-by-side: the **Current (Quadratic WTA)** model and the **Improved (Linear Kernel)** model.
+An interactive browser-based playground for comparing two continuous prediction
+market AMM designs side-by-side under the **same smooth-kernel settlement**: an
+**L2-norm (hypersphere) AMM** versus an **LMSR (logarithmic market scoring rule)
+AMM**.
 
-Both engines share the same L2-norm AMM for trading but differ in how probabilities are displayed and how payouts work at resolution.
+Both engines settle identically — a triangular kernel pays nearby bins around the
+winning outcome, with a solvency `claimScale` guard. They differ **only in the AMM**
+that prices and fills trades. The goal: find which AMM gives traders and LPs better
+outcomes under the smooth-kernel model the protocol now ships.
 
 ## Why This Exists
 
-DekantPM's on-chain program uses a quadratic winner-takes-all (WTA) settlement model. This playground was built to explore an alternative: a kernel-based settlement where bins near the winning outcome receive partial payouts instead of all-or-nothing. The tool lets you run identical trading sequences against both engines and directly compare the economic consequences — trader P&L, LP returns, and payout distributions.
+DekantPM's on-chain program uses the smooth-kernel settlement (linear probability
+display + triangular payout). This tool keeps that settlement fixed and swaps the
+underlying AMM to see which curve is more profitable / fairer in practice. Run an
+identical sequence of trades against both engines and compare trader P&L, LP
+returns, payout distributions, and solvency.
 
 ## The Two Engines
 
-### Current — Quadratic WTA
+Shared by both: the smooth triangular settlement kernel
+`K(i, win, W) = max(0, 1 − |i − win| / (W + 1))`, the solvency scale
+`claimScale = min(1, pool / Σ kernel claims)`, the fee model (trade / LP-share /
+redemption), and LP share accounting.
 
-- **Probability**: `p_i = x_i^2 / k^2` (quadratic, matching the on-chain L2-norm invariant)
-- **Resolution**: Winner-takes-all — only tokens in the exact winning bin pay out 1:1
-- Traders who are close but not exactly right get nothing
+### L2-norm (Hypersphere AMM)
 
-### Improved — Linear Kernel
+- **Invariant**: `Σ xᵢ² = k²` — trades move reserves along a hypersphere
+- **Probability**: `pᵢ = xᵢ / Σ xⱼ` (linear display)
+- **Pool / vault**: `k`
+- **Liquidity provision**: add/remove scales all reserves proportionally, which
+  **preserves the probability distribution** and changes depth
 
-- **Probability**: `p_i = x_i / sum(x_j)` (linear display)
-- **Resolution**: Triangular kernel — bins within `W` steps of the winning bin receive partial payouts that decay linearly with distance
-- A solvency `claimScale` factor ensures total claims never exceed the collateral pool (`claimScale = min(1, k / totalKernelClaim)`)
-- Traders with nearby predictions still earn a return, incentivizing participation
+### LMSR (Logarithmic Market Scoring Rule)
+
+- **Cost function**: `C(q; b) = b · ln Σ exp(qᵢ / b)`; a buy of `Δq` shares costs
+  `C(q + Δq) − C(q)`
+- **Probability**: `pᵢ = softmax(qᵢ / b)`
+- **Pool / vault**: `C(q; b)` (initial subsidy `b·ln(N)` + net trade collateral)
+- **Liquidity parameter**: `b = liquidity / ln(N)`, so the LMSR market locks exactly
+  the same collateral as the L2-norm vault `k` and both start at uniform prices
+- **Liquidity provision**: add/remove scales `b` (deeper/shallower market), which
+  drifts live prices toward/away from uniform; trader holdings are untouched
 
 ## Features
 
 ### Setup Tab
 - Configure market parameters: number of bins (16–1024+), value range, initial liquidity
-- Adjustable kernel width (`W`) for the improved engine
+- Adjustable settlement kernel width (`W`) — applies to both engines
 - Fee configuration: trade fees (bps), LP fee share (%), redemption fees (bps)
 - Create multiple named traders with individual wallet balances
 
 ### Trading Tab
-- **Distribution trades**: Set a belief as a Gaussian (mu + confidence/sigma) and buy/sell across bins in proportion to that distribution
-- **Discrete trades**: Buy or sell individual bins directly
-- **Sell All**: Liquidate all positions for a trader
+- **Distribution trades**: set a belief as a Gaussian (mu + confidence/sigma) and
+  buy/sell across bins; each engine fills the same collateral with its own AMM
+- **Discrete trades**: buy or sell individual bins directly
+- **Sell All**: liquidate all positions for a trader
 - Side-by-side probability charts (split or combined view) with Chart.js zoom/pan
 - Real-time portfolio stats: holdings, expected payout, unrealized P&L
-- Trade history log with per-trade details
+- Live trade preview driven by each engine's real (non-mutating) fill math
 
 ### Liquidity Tab
 - Add/remove liquidity (LP shares)
 - LP portfolio breakdown: share fraction, reserve value, fee earnings
 - Per-outcome LP payout charts for both engines
+- LP E[PnL] vs trader-count simulation, run independently on each AMM
 
 ### Resolve Tab
 - Resolve the market at any value within the range
-- Kernel visualization showing the triangular payout weights (improved engine)
+- Kernel visualization showing the triangular payout weights
 - Payout analysis chart comparing trader returns across all possible outcomes
-- Detailed payout tables: per-trader and per-LP results with gross payout, fees, P&L
-- Combined summary table merging trader and LP results
+- Detailed payout tables: per-trader and per-LP results (gross, fees, P&L)
+- Solvency factor and LP residual per engine
 
 ### General
 - Dark/light theme toggle
 - Configurable display: font size, number format (compact/long), decimal precision
-- Save/load market state to localStorage (preserves all positions, trades, and LP state)
-- Stats displayed as cards or inline text
+- Save/load market state to localStorage (preserves positions, trades, LP, LMSR `b`)
 - Toast notifications for actions and errors
 
 ## Tech Stack
@@ -84,15 +106,17 @@ php -S localhost:8765
 ```
 
 Then open `http://localhost:8765` in a browser.
+Open `test-engines.html` to run the engine unit tests in the browser.
 
 ## File Structure
 
 ```
 comparison/
-├── index.html          # Full UI (~4000 lines, all tabs and controls)
-├── comparison.js       # Both market engines + DualMarket orchestrator
-├── styles.css          # Theming (dark/light), layout, components
-├── test-engines.html   # Standalone engine unit tests
-├── vendor/             # Chart.js, Hammer.js, zoom plugin, Inter font
-└── TASKS.md            # Development task tracker
+├── index.html              # Full UI (all tabs and controls)
+├── comparison.js           # Both AMM engines + shared kernel + DualMarket orchestrator
+├── styles.css              # Theming (dark/light), layout, components
+├── test-engines.html       # Standalone engine unit tests (LMSR + L2-norm + kernel)
+├── LMSR_REFACTOR_PLAN.md   # Refactor plan / design decisions
+├── vendor/                 # Chart.js, Hammer.js, zoom plugin, Inter font
+└── TASKS.md                # Development task tracker
 ```
