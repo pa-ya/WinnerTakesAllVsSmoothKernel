@@ -466,6 +466,49 @@ SmoothKernel.sellAll = function (traderName) {
   };
 };
 
+// Peak (best-case winning bin) payout for a hypothetical buy of `tokensPerBin`,
+// matching the shape of computeKernelPeak. Two modes:
+//   solvencyAware = false  -> raw kernel claim (what the engines return today):
+//                             max_w Σ_j tokens_j·K(j,w) · (1 − redemptionFee).
+//   solvencyAware = true   -> apply the settlement claimScale that would obtain
+//                             at each winning bin, using the pool AFTER paying
+//                             `net` collateral and the TOTAL holdings AFTER this
+//                             trade (this trade's tokens + every trader's current
+//                             holdings). This is the realistic best case — the
+//                             most the vault can actually pay for this trade.
+// Returns { peakPayout, peakBin }. With solvencyAware = false the result is
+// byte-for-byte the engine's existing peakPayout (cs ≡ 1).
+SmoothKernel.previewPeakPayout = function (tokensPerBin, net, solvencyAware) {
+  var N = this.N, KW = this.kernelWidth;
+  var rf = 1 - this.redemptionFeeBps / 10000;
+  var poolAfter = this.getPool() + (net || 0);
+
+  // Total holdings per bin after this trade (only needed when solvency-aware).
+  var totalAfter = [];
+  for (var i = 0; i < N; i++) totalAfter.push(tokensPerBin[i] || 0);
+  if (solvencyAware) {
+    for (var nm in this.traderHoldings) {
+      var th = this.traderHoldings[nm];
+      for (var i = 0; i < N; i++) totalAfter[i] += th.holdings[i];
+    }
+  }
+
+  var peakPayout = 0, peakBin = 0;
+  for (var w = 0; w < N; w++) {
+    var lo = Math.max(0, w - KW), hi = Math.min(N - 1, w + KW);
+    var myClaim = 0, totalClaim = 0;
+    for (var j = lo; j <= hi; j++) {
+      var kw = 1 - Math.abs(j - w) / (KW + 1);
+      myClaim += (tokensPerBin[j] || 0) * kw;
+      totalClaim += totalAfter[j] * kw;
+    }
+    var cs = (solvencyAware && totalClaim > poolAfter && totalClaim > 0) ? poolAfter / totalClaim : 1;
+    var pay = myClaim * cs * rf;
+    if (pay > peakPayout) { peakPayout = pay; peakBin = w; }
+  }
+  return { peakPayout: peakPayout, peakBin: peakBin };
+};
+
 function applySmoothKernel(proto) {
   for (var key in SmoothKernel) proto[key] = SmoothKernel[key];
 }

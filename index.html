@@ -206,6 +206,14 @@
         <span class="toolbar-value" id="autoFitYLabel">Auto</span>
       </div>
       <div class="toolbar-group">
+        <span class="toolbar-label">Solvency</span>
+        <label class="toggle-switch" title="On: Max/Peak Payout apply the settlement claimScale (the most the vault can actually pay). Off: raw best-case kernel claim (pre-solvency).">
+          <input type="checkbox" id="solvencyStatsToggle" onchange="toggleSolvencyStats(this.checked)">
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+        <span class="toolbar-value" id="solvencyStatsLabel">Off</span>
+      </div>
+      <div class="toolbar-group">
         <span class="toolbar-label">Chart</span>
         <div class="chart-mode-group">
           <button class="chart-mode-btn active" onclick="setChartMode('split', this)">Split</button>
@@ -748,6 +756,39 @@ function toggleCollapsible(titleEl) {
 // CHART MODE (split/combined)
 // ============================================================
 var chartMode = 'split';
+
+// When true, Max/Peak Payout stats apply the settlement claimScale (realistic,
+// solvency-capped best case). When false, raw best-case kernel claim (current).
+var solvencyAwareStats = false;
+
+function toggleSolvencyStats(enabled) {
+  solvencyAwareStats = !!enabled;
+  var label = document.getElementById('solvencyStatsLabel');
+  if (label) label.textContent = enabled ? 'On' : 'Off';
+  if (!dualMarket || !dualMarket.initialized) return;
+
+  // Only re-render the PREVIEW (and only if it is already on screen). The toggle
+  // must never touch the portfolio stats box — re-rendering it shifts the layout
+  // ("a box appears below the preview"). The portfolio Peak Payout still honors
+  // this mode via displayPeakPayout on its next natural refresh (after a trade).
+  var previewSplit = document.getElementById('distPreviewStats');
+  var previewCombined = document.getElementById('distPreviewCombined');
+  var previewVisible = (previewSplit && previewSplit.style.display !== 'none') ||
+    (previewCombined && previewCombined.style.display !== 'none');
+  if (previewVisible && typeof updatePreviewStats === 'function') updatePreviewStats();
+}
+
+// Peak payout to display for a trader's CURRENT holdings, honoring the Solvency
+// toggle. Raw = portfolio.peakPayout (pre-solvency). Solvency-aware = max over
+// outcomes of getTraderPayoutPerOutcome (claimScale + redemption applied).
+function displayPeakPayout(engineObj, traderName, rawPeak) {
+  if (!solvencyAwareStats || !engineObj || !traderName) return rawPeak;
+  var ppo = engineObj.getTraderPayoutPerOutcome(traderName);
+  if (!ppo) return rawPeak;
+  var m = 0;
+  for (var i = 0; i < ppo.length; i++) if (ppo[i] > m) m = ppo[i];
+  return m;
+}
 
 function setChartMode(mode, btn) {
   chartMode = mode;
@@ -1474,16 +1515,18 @@ function refreshCombinedDistStats(traderName) {
   var cp = portfolios.lmsr;
   var ip = portfolios.l2;
 
-  table.innerHTML = buildComparisonTableHtml(cp, ip);
+  table.innerHTML = buildComparisonTableHtml(cp, ip, traderName);
 }
 
-function buildComparisonTableHtml(cp, ip) {
+function buildComparisonTableHtml(cp, ip, traderName) {
+  var cPeak = displayPeakPayout(dualMarket.lmsr, traderName, cp.peakPayout);
+  var iPeak = displayPeakPayout(dualMarket.l2, traderName, ip.peakPayout);
   var rows = [
     { label: 'Vault', c: dualMarket.lmsr.getPool(), i: dualMarket.l2.getPool(), style: '' },
     { label: 'Wallet', c: cp.wallet, i: ip.wallet, style: '' },
     { label: 'Holdings', c: cp.totalHoldings, i: ip.totalHoldings, style: '' },
     { label: 'E[Payout]', c: cp.expectedPayout, i: ip.expectedPayout, style: '' },
-    { label: 'Peak Payout', c: cp.peakPayout, i: ip.peakPayout, style: '' },
+    { label: 'Peak Payout', c: cPeak, i: iPeak, style: '' },
     { label: 'Spent', c: cp.totalSpent, i: ip.totalSpent, style: 'color:var(--danger)' },
     { label: 'Received', c: cp.totalReceived, i: ip.totalReceived, style: 'color:var(--success)' },
     { label: 'Unreal. PnL', c: cp.unrealizedPnL, i: ip.unrealizedPnL, style: 'pnl' },
@@ -2360,7 +2403,9 @@ function refreshDistStats(traderName) {
   var ip = portfolios.l2;
 
   function statsHtml(p, engine) {
-    var k = engine === 'lmsr' ? dualMarket.lmsr.getPool() : dualMarket.l2.getPool();
+    var engineObj = engine === 'lmsr' ? dualMarket.lmsr : dualMarket.l2;
+    var k = engineObj.getPool();
+    var peak = displayPeakPayout(engineObj, traderName, p.peakPayout);
     var pnlClass = p.unrealizedPnL >= 0 ? 'positive' : 'negative';
     var epClass = p.expectedPayout > p.totalSpent ? 'positive' : (p.expectedPayout < p.totalSpent && p.totalSpent > 0 ? 'negative' : '');
     return '' +
@@ -2368,7 +2413,7 @@ function refreshDistStats(traderName) {
       '<div class="result-item"><div class="result-label">Wallet</div><div class="result-value">' + formatCompact(p.wallet) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Holdings</div><div class="result-value">' + formatCompact(p.totalHoldings) + '</div></div>' +
       '<div class="result-item"><div class="result-label">E[Payout]</div><div class="result-value ' + epClass + '">' + formatCompact(p.expectedPayout) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Peak Payout</div><div class="result-value">' + formatCompact(p.peakPayout) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Peak Payout</div><div class="result-value">' + formatCompact(peak) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Spent</div><div class="result-value" style="color:var(--danger)">' + formatCompact(p.totalSpent) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Received</div><div class="result-value" style="color:var(--success)">' + formatCompact(p.totalReceived) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Unreal. PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(p.unrealizedPnL) + '</div></div>';
@@ -2458,8 +2503,13 @@ function updatePreviewStats(cPreviewArg, iPreviewArg) {
 
   // Stats come straight from the engine previews (LMSR / L2-norm), so they match
   // the executed trade exactly — both use the shared kernel-weighted peak payout.
-  var cStats = { total: cPreview.totalTokens, maxPayout: cPreview.peakPayout, peakBin: cPreview.peakBin, fee: cPreview.fee, cost: cPreview.cost };
-  var iStats = { total: iPreview.totalTokens, maxPayout: iPreview.peakPayout, peakBin: iPreview.peakBin, fee: iPreview.fee, cost: iPreview.cost };
+  // The Solvency toggle swaps the raw best-case peak for the claimScale-capped
+  // peak (previewPeakPayout reproduces the raw value exactly when the toggle is off).
+  var cNet = cPreview.cost - cPreview.fee, iNet = iPreview.cost - iPreview.fee;
+  var cPk = dualMarket.lmsr.previewPeakPayout(cPreview.tokensPerBin, cNet, solvencyAwareStats);
+  var iPk = dualMarket.l2.previewPeakPayout(iPreview.tokensPerBin, iNet, solvencyAwareStats);
+  var cStats = { total: cPreview.totalTokens, maxPayout: cPk.peakPayout, peakBin: cPk.peakBin, fee: cPreview.fee, cost: cPreview.cost };
+  var iStats = { total: iPreview.totalTokens, maxPayout: iPk.peakPayout, peakBin: iPk.peakBin, fee: iPreview.fee, cost: iPreview.cost };
 
   if (isCombined) {
     if (splitPanel) splitPanel.style.display = 'none';

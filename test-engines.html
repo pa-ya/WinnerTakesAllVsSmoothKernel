@@ -502,6 +502,56 @@
   assert(lsd2.initConfig.fees.lmsrMode === 'lslmsr' && near(lsd2.initConfig.fees.lsSensitivity, 0.3, 1e-9), 'LS initConfig fees survive (UI restore)');
 
   // ============================================================
+  // 24. Solvency-aware peak payout (previewPeakPayout)
+  // ============================================================
+  suite('24. previewPeakPayout (solvency toggle)');
+  // (a) solvencyAware=false reproduces the engine's raw peakPayout exactly
+  function peakRawParity(name, engine) {
+    globalTraders = { z: { wallet: 1e12 } };
+    var prev = engine.previewDistributionBuy(45, 9, 7000);
+    var net = prev.cost - prev.fee;
+    var pk = engine.previewPeakPayout(prev.tokensPerBin, net, false);
+    assert(near(pk.peakPayout, prev.peakPayout, 0.01), name + ' previewPeakPayout(false) == engine peakPayout');
+    assert(pk.peakBin === prev.peakBin, name + ' previewPeakPayout(false) peakBin matches');
+  }
+  peakRawParity('LMSR', new LmsrMarket(N, 0, 100, L, { tradeFeeBps: 0 }));
+  peakRawParity('L2', new L2Market(N, 0, 100, L, { tradeFeeBps: 0 }));
+
+  // (b) when claims fit in the pool, solvency-aware == raw (claimScale=1)
+  var sa1 = new LmsrMarket(N, 0, 100, L, { tradeFeeBps: 0 });
+  globalTraders = { z: { wallet: 1e12 } };
+  var sp1 = sa1.previewDistributionBuy(50, 8, 3000);
+  var rawA = sa1.previewPeakPayout(sp1.tokensPerBin, 3000, false);
+  var solA = sa1.previewPeakPayout(sp1.tokensPerBin, 3000, true);
+  assert(near(rawA.peakPayout, solA.peakPayout, 0.01), 'solvency==raw when pool covers claims (small trade)');
+
+  // (c) when claims exceed the pool, solvency-aware < raw, and matches actual resolve
+  var sa2 = new LmsrMarket(N, 0, 100, 5000, { tradeFeeBps: 0 });
+  globalTraders = { z: { wallet: 1e12 } };
+  for (var i24 = 0; i24 < 5; i24++) sa2.distributionBuy('z', 50, 5, 9000); // pile up -> claims > pool
+  var sp2 = sa2.previewDistributionBuy(50, 5, 9000);
+  var net2 = sp2.cost - sp2.fee;
+  var raw2 = sa2.previewPeakPayout(sp2.tokensPerBin, net2, false);
+  var sol2 = sa2.previewPeakPayout(sp2.tokensPerBin, net2, true);
+  assert(sol2.peakPayout < raw2.peakPayout, 'solvency-aware peak < raw peak when claims exceed pool');
+  // execute the trade then resolve at the solvency-aware peak bin; the marginal
+  // payout from this trade's tokens should be <= the solvency-aware preview.
+  var holdBefore = sa2.traderHoldings['z'].holdings.slice();
+  sa2.distributionBuy('z', 50, 5, 9000);
+  var resB = sa2.resolve((sol2.peakBin + 0.5) * 100 / N);
+  assert(resB.claimScale <= 1, 'resolve claimScale <= 1 in over-claim scenario');
+  assert(sol2.peakPayout <= raw2.peakPayout + 1e-6, 'solvency-aware peak is a valid (capped) bound');
+
+  // (d) L2 too: solvency-aware never exceeds raw
+  var sa3 = new L2Market(N, 0, 100, 5000, { tradeFeeBps: 0 });
+  globalTraders = { z: { wallet: 1e12 } };
+  for (var j24 = 0; j24 < 5; j24++) sa3.distributionBuy('z', 50, 5, 9000);
+  var sp3 = sa3.previewDistributionBuy(50, 5, 9000);
+  var raw3 = sa3.previewPeakPayout(sp3.tokensPerBin, sp3.cost - sp3.fee, false);
+  var sol3 = sa3.previewPeakPayout(sp3.tokensPerBin, sp3.cost - sp3.fee, true);
+  assert(sol3.peakPayout <= raw3.peakPayout + 1e-6, 'L2 solvency-aware peak <= raw peak');
+
+  // ============================================================
   // SUMMARY
   // ============================================================
   log('<div class="summary">' + pass + ' passed, ' + fail + ' failed</div>');

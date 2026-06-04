@@ -81,6 +81,10 @@ The left engine has two selectable variants (set in the Setup tab):
 - Side-by-side probability charts (split or combined view) with Chart.js zoom/pan
 - Real-time portfolio stats: holdings, expected payout, unrealized P&L
 - Live trade preview driven by each engine's real (non-mutating) fill math
+- **Solvency toggle** (toolbar): when ON, the "Max Payout" / "Peak Payout" stats
+  apply the settlement `claimScale` (the most the vault can actually pay at the
+  best-case outcome); when OFF, they show the raw best-case kernel claim
+  (pre-solvency). See `LMSR_KERNEL_ARBITRAGE.md` for why these can differ.
 
 ### Liquidity Tab
 - Add/remove liquidity (LP shares)

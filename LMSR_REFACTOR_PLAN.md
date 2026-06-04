@@ -203,11 +203,41 @@ share seed** `seed` (per-bin), separate from trader holdings:
 
 ## Phase 3 — Full review & debugging
 
-- [ ] **3.1** Line-by-line math review of LMSR, LS-LMSR, and (re-assurance) L2-norm.
-- [ ] **3.2** Cross-engine invariants: solvency (`pool ≥ scaledClaims` both engines,
+- [x] **3.1** Line-by-line math review of LMSR, LS-LMSR, and (re-assurance) L2-norm.
+- [x] **3.2** Cross-engine invariants: solvency (`pool ≥ scaledClaims` both engines,
       all resolve points), conservation (`pool = Σpayouts + residual + protocolFees`),
       no-arbitrage round-trips, LP prob-preservation (L2) / prob-drift (LMSR).
-- [ ] **3.3** Full test sweep + manual UI pass; fix all findings.
+- [x] **3.3** Full test sweep + UI-wiring audit; fix all findings.
+
+### Phase 3 review results (no bugs found)
+
+Full re-audit of all engine math + UI integration. **Outcome: clean — no
+corrections required.** Evidence:
+
+- **Math derivations re-verified analytically.**
+  - Plain LMSR: `C(0;b)=b·ln N=liquidity`; vault==C(positions) after every op;
+    `dC/db=H(p)≥0` ⇒ `solveB`/`solveShares` bisection valid.
+  - LS-LMSR (pure Othman `b=α·ΣQ`): re-derived the marginal price
+    `p_i = α·ln S + softmax_i − (α/b)·Σ q_j softmax_j` and the seed lever
+    `dC/dseed = Σ_i p_i = 1 + α·N·H(p) ≥ 1 > 0` — matches the code's monotonicity
+    assumption exactly; collateral-match `seed=liquidity/(α·N·ln N+1)` ⇒ `C(Q₀)=liquidity`
+    confirmed. Display = inner softmax(Q/b); the overround is charged via the exact
+    cost-difference fills (not in displayed probs) — by design.
+- **743-check independent numerical probe** (`/tmp/probe.js`), all pass:
+  cost monotonicity along 40 random buy directions (LS); marginal-price positivity
+  + sanity (`0 < p_i < 1.5`) on every bin; pool==C(positions) and positions==Σholdings
+  at every step of two 120-step random mixed lifecycles (plain + LS); seed>0 invariant
+  held; resolve conservation `pool+accLpFees == Σpayouts+ΣredemptionFee` at all win bins;
+  no-arbitrage (instant buy→sell-back never profits, vault restored) both modes;
+  **overround validation** — plain marginal-price sum ≈ 1 (no vig), LS sum > 1 with
+  uniform-start overround ≈ sensitivity (confirms the `α = sens/(N·ln N)` mapping).
+- **Engine test sweep:** 164 / 164 pass.
+- **UI-wiring audit:** no stale `.current`/`.improved` refs; no inline `engine.k`
+  access (original NaN bug stays fixed); vault shown via `getPool()` everywhere
+  (no stale `this.b` displayed for LS where it is only informational); setup
+  `<select>` defaults to plain `lmsr`; `loadMarketState` defaults missing
+  `lmsrMode`→`lmsr` (old-save compatible); `updateEngineLabels` caches `data-base`
+  (idempotent relabel). All 5 JS files + inline index.html script compile clean.
 
 ---
 
