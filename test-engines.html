@@ -288,6 +288,28 @@
   previewParity('LMSR', new LmsrMarket(N, 0, 100, L, { tradeFeeBps: 0 }));
   previewParity('L2', new L2Market(N, 0, 100, L, { tradeFeeBps: 0 }));
 
+  // LP add/remove preview must match the executed LP op (no NaN, incl. LMSR floor)
+  function lpPreviewParity(name, engine) {
+    globalTraders = { lpx: { wallet: 1e9 }, t: { wallet: 1e9 } };
+    engine.distributionBuy('t', 50, 9, 7000);          // create some skew
+    var addPrev = engine.previewAddLiquidity('lpx', 4000);
+    assert(addPrev && isFinite(addPrev.newPool) && isFinite(addPrev.sharesReceived), name + ' add preview is finite (no NaN)');
+    var poolBefore = engine.getPool();
+    var addExec = engine.addLiquidity('lpx', 4000);
+    assert(near(addPrev.sharesReceived, addExec.sharesReceived, 0.01), name + ' add preview shares match executed');
+    assert(near(addPrev.newPool, engine.getPool(), 0.5), name + ' add preview newPool matches executed pool');
+    assert(near(addPrev.newPool, poolBefore + 4000, 0.5), name + ' add grows vault by deposit');
+    // remove preview parity
+    var remPrev = engine.previewRemoveLiquidity('lpx', 2000);
+    assert(remPrev && isFinite(remPrev.collateralOut) && isFinite(remPrev.sharesBurned), name + ' remove preview is finite (no NaN)');
+    var remExec = engine.removeLiquidity('lpx', 2000);
+    assert(near(remPrev.sharesBurned, remExec.sharesBurned, 0.01), name + ' remove preview shares match executed');
+    assert(near(remPrev.collateralOut, remExec.collateralOut, 0.5), name + ' remove preview collateralOut matches executed');
+    assert(near(remPrev.totalPayout, remExec.totalPayout, 0.5), name + ' remove preview totalPayout matches executed');
+  }
+  lpPreviewParity('LMSR', new LmsrMarket(N, 0, 100, L, { tradeFeeBps: 30, lpFeeSharePct: 50 }));
+  lpPreviewParity('L2', new L2Market(N, 0, 100, L, { tradeFeeBps: 30, lpFeeSharePct: 50 }));
+
   // ============================================================
   // 15. getTraderPayoutPerOutcome
   // ============================================================

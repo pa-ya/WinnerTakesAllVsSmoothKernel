@@ -129,6 +129,25 @@ happens in **Phase 2** during the approved file-split, as one focused diff.
       "which AMM is better under the smooth kernel" goal.
 - [x] **1.8** Run headless test harness — 0 failures. Report.
 
+### Phase 1 post-review (fixes applied before Phase 2)
+
+Full re-audit of the committed Phase 1 work. Findings + fixes:
+
+- **BUG (LMSR LP preview NaN):** `computeLpAddPreview`/`computeLpRemovePreview` in
+  `index.html` read `engine.k` inline — `undefined` on the LMSR engine, so the LMSR
+  LP preview rendered NaN. Fixed by adding non-mutating engine methods
+  `previewAddLiquidity` (shared mixin) + `previewRemoveLiquidity` (per-engine, LMSR
+  one enforces the solvency floor) and delegating the UI to them. Preview now equals
+  execution for both engines (new tests assert parity, incl. fees + floor).
+- **BUG (chart border color):** 4 `colors.muted` references → `colors.textMuted`
+  (`colors` has no `muted` key; break-even / reference lines drew with undefined color).
+- **Label:** "New Vault (k)" → "New Vault" (LMSR has no `k`); field `newK` → `newPool`.
+- **Verified numerically:** collateral conservation across a full mixed lifecycle
+  (dist/discrete buy+sell, sellAll, LP add/remove, fees) — LMSR drift ~2e-7 (solver
+  tol, rel. ~1e-12), L2 exact; resolve balances `pool+accLpFees == Σpayouts` to ~1e-11;
+  `claimScale ≤ 1` (solvent) on both engines.
+- **Tests:** 141 passed / 0 failed (was 125; +16 LP-preview-parity assertions).
+
 ## Phase 2 — LMSR vs LS-LMSR toggle + modularization
 
 - [ ] **2.1** Split `comparison.js` into `engines/*.js` (l2, lmsr, dual, shared

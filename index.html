@@ -2596,7 +2596,7 @@ function buildLpPayoutChartConfig(labels, payoutData, depositedLine, engine) {
         {
           label: 'Break-even',
           data: depositedLine,
-          borderColor: colors.muted,
+          borderColor: colors.textMuted,
           borderDash: [6, 3],
           borderWidth: 1,
           pointRadius: 0,
@@ -2661,7 +2661,7 @@ function buildLpPayoutCombinedConfig(labels, cPayout, iPayout, depositedLine) {
         {
           label: 'Break-even',
           data: depositedLine,
-          borderColor: colors.muted,
+          borderColor: colors.textMuted,
           borderDash: [6, 3],
           borderWidth: 1,
           pointRadius: 0,
@@ -2837,43 +2837,14 @@ function refreshLpCombinedStats(lpName) {
 
 // --- LP Preview ---
 
+// Delegate to the engine's own non-mutating preview math so LMSR (no `.k`,
+// scale-b model + solvency floor) and L2-norm both preview correctly.
 function computeLpAddPreview(engine, lpName, amount) {
-  var lp = engine.lpProviders[lpName];
-  var existingShares = lp ? lp.shares : 0;
-  var newShares = engine.totalLpShares > 0 ? engine.totalLpShares * amount / engine.k : amount;
-  var newTotalShares = engine.totalLpShares + newShares;
-  var poolFraction = (existingShares + newShares) / newTotalShares;
-  var newK = engine.k + amount;
-  var feeEarnings = engine.accumulatedLpFees * poolFraction;
-  var currentValue = newK * poolFraction + feeEarnings;
-  var totalDeposited = (lp ? lp.deposited : 0) + amount;
-  var totalWithdrawn = lp ? lp.withdrawn : 0;
-  return {
-    sharesReceived: newShares, totalShares: newTotalShares,
-    poolFraction: poolFraction, newK: newK,
-    currentValue: currentValue, totalDeposited: totalDeposited,
-    unrealizedPnL: currentValue + totalWithdrawn - totalDeposited,
-  };
+  return engine.previewAddLiquidity(lpName, amount);
 }
 
 function computeLpRemovePreview(engine, lpName, amount) {
-  var lp = engine.lpProviders[lpName];
-  if (!lp || lp.shares <= 0) return null;
-  var maxAmount = engine.k * lp.shares / engine.totalLpShares;
-  var actualAmount = Math.min(amount, maxAmount);
-  var sharesToBurn = actualAmount * engine.totalLpShares / engine.k;
-  sharesToBurn = Math.min(sharesToBurn, lp.shares);
-  var collateralOut = engine.k * sharesToBurn / engine.totalLpShares;
-  var feeShare = engine.accumulatedLpFees * sharesToBurn / engine.totalLpShares;
-  var totalPayout = collateralOut + feeShare;
-  var remainingShares = lp.shares - sharesToBurn;
-  var newTotalShares = engine.totalLpShares - sharesToBurn;
-  return {
-    sharesBurned: sharesToBurn, collateralOut: collateralOut,
-    feeShare: feeShare, totalPayout: totalPayout,
-    remainingShares: remainingShares,
-    poolFraction: newTotalShares > 0 ? remainingShares / newTotalShares : 0,
-  };
+  return engine.previewRemoveLiquidity(lpName, amount);
 }
 
 function lpPreviewHtml(preview, action) {
@@ -2883,7 +2854,7 @@ function lpPreviewHtml(preview, action) {
     return '' +
       '<div class="result-item"><div class="result-label">Shares +</div><div class="result-value" style="color:var(--success)">' + formatCompact(preview.sharesReceived) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Pool %</div><div class="result-value">' + (preview.poolFraction * 100).toFixed(1) + '%</div></div>' +
-      '<div class="result-item"><div class="result-label">New Vault (k)</div><div class="result-value">' + formatCompact(preview.newK) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">New Vault</div><div class="result-value">' + formatCompact(preview.newPool) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Est. Value</div><div class="result-value">' + formatCompact(preview.currentValue) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Est. PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(preview.unrealizedPnL) + '</div></div>';
   } else {
@@ -3141,7 +3112,7 @@ function runLpSimulation() {
           {
             label: 'Break-even',
             data: traderLabels.map(function () { return 0; }),
-            borderColor: colors.muted,
+            borderColor: colors.textMuted,
             borderDash: [6, 3],
             borderWidth: 1,
             pointRadius: 0,
@@ -3189,7 +3160,7 @@ function runLpSimulation() {
       datasets: [
         { label: 'Current LP E[PnL]', data: cPnL, borderColor: colors.primary, backgroundColor: colors.primary + '18', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.1 },
         { label: 'Improved LP E[PnL]', data: iPnL, borderColor: colors.accent, backgroundColor: colors.accent + '18', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.1 },
-        { label: 'Break-even', data: traderLabels.map(function () { return 0; }), borderColor: colors.muted, borderDash: [6, 3], borderWidth: 1, pointRadius: 0, fill: false },
+        { label: 'Break-even', data: traderLabels.map(function () { return 0; }), borderColor: colors.textMuted, borderDash: [6, 3], borderWidth: 1, pointRadius: 0, fill: false },
       ],
     },
     options: {

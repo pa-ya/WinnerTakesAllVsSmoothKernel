@@ -571,6 +571,29 @@ SmoothKernel.getAllLpPortfolio = function () {
   };
 };
 
+// Non-mutating LP add preview. Add-liquidity accounting is identical for both
+// engines: the vault grows by exactly `amount` and shares are pro-rata on the
+// pre-add pool. (L2 grows k by amount; LMSR grows b so C grows by amount.)
+SmoothKernel.previewAddLiquidity = function (lpName, amount) {
+  var lp = this.lpProviders[lpName];
+  var existingShares = lp ? lp.shares : 0;
+  var pool = this.getPool();
+  var newShares = this.totalLpShares > 0 ? this.totalLpShares * amount / pool : amount;
+  var newTotalShares = this.totalLpShares + newShares;
+  var poolFraction = newTotalShares > 0 ? (existingShares + newShares) / newTotalShares : 0;
+  var newPool = pool + amount;
+  var feeEarnings = this.accumulatedLpFees * poolFraction;
+  var currentValue = newPool * poolFraction + feeEarnings;
+  var totalDeposited = (lp ? lp.deposited : 0) + amount;
+  var totalWithdrawn = lp ? lp.withdrawn : 0;
+  return {
+    sharesReceived: newShares, totalShares: newTotalShares,
+    poolFraction: poolFraction, newPool: newPool,
+    currentValue: currentValue, totalDeposited: totalDeposited,
+    unrealizedPnL: currentValue + totalWithdrawn - totalDeposited,
+  };
+};
+
 // Generic sell-all by token holdings — works for either AMM because it routes
 // through the engine's own discreteSell-style mechanics via _sellShares hook.
 SmoothKernel.sellAll = function (traderName) {
@@ -941,6 +964,26 @@ L2Market.prototype.removeLiquidity = function (lpName, amount) {
   };
 };
 
+// Non-mutating LP remove preview — mirrors removeLiquidity exactly (pool = k).
+L2Market.prototype.previewRemoveLiquidity = function (lpName, amount) {
+  var lp = this.lpProviders[lpName];
+  if (!lp || lp.shares <= 0) return null;
+  var pool = this.k;
+  var maxAmount = pool * lp.shares / this.totalLpShares;
+  var actualAmount = Math.min(amount, maxAmount);
+  var sharesToBurn = Math.min(actualAmount * this.totalLpShares / pool, lp.shares);
+  var collateralOut = pool * sharesToBurn / this.totalLpShares;
+  var feeShare = this.accumulatedLpFees * sharesToBurn / this.totalLpShares;
+  var totalPayout = collateralOut + feeShare;
+  var remainingShares = lp.shares - sharesToBurn;
+  var newTotalShares = this.totalLpShares - sharesToBurn;
+  return {
+    sharesBurned: sharesToBurn, collateralOut: collateralOut,
+    feeShare: feeShare, totalPayout: totalPayout, remainingShares: remainingShares,
+    poolFraction: newTotalShares > 0 ? remainingShares / newTotalShares : 0,
+  };
+};
+
 L2Market.prototype.getState = function () {
   return {
     k: this.k, positions: this.positions.slice(),
@@ -1267,6 +1310,31 @@ LmsrMarket.prototype.removeLiquidity = function (lpName, amount) {
     feeShare: feeShare, totalPayout: totalPayout,
     remainingShares: lp.shares,
     poolFraction: this.totalLpShares > 0 ? lp.shares / this.totalLpShares : 0,
+  };
+};
+
+// Non-mutating LP remove preview — mirrors removeLiquidity exactly, including
+// the LMSR solvency floor (vault must stay strictly above max q_i).
+LmsrMarket.prototype.previewRemoveLiquidity = function (lpName, amount) {
+  var lp = this.lpProviders[lpName];
+  if (!lp || lp.shares <= 0) return null;
+  var pool = lmsrCost(this.positions, this.b);
+  var maxq = 0;
+  for (var j = 0; j < this.N; j++) if (this.positions[j] > maxq) maxq = this.positions[j];
+  var maxByFloor = Math.max(0, pool - maxq - 1e-6);
+  var maxAmount = pool * lp.shares / this.totalLpShares;
+  var actualAmount = Math.min(amount, maxAmount, maxByFloor);
+  if (actualAmount <= 0) return null;
+  var sharesToBurn = Math.min(actualAmount * this.totalLpShares / pool, lp.shares);
+  var collateralOut = pool * sharesToBurn / this.totalLpShares;
+  var feeShare = this.accumulatedLpFees * sharesToBurn / this.totalLpShares;
+  var totalPayout = collateralOut + feeShare;
+  var remainingShares = lp.shares - sharesToBurn;
+  var newTotalShares = this.totalLpShares - sharesToBurn;
+  return {
+    sharesBurned: sharesToBurn, collateralOut: collateralOut,
+    feeShare: feeShare, totalPayout: totalPayout, remainingShares: remainingShares,
+    poolFraction: newTotalShares > 0 ? remainingShares / newTotalShares : 0,
   };
 };
 
