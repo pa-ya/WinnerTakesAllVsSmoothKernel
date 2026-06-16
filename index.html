@@ -733,6 +733,12 @@ function switchMainTab(tabId, btn) {
   if (tabId === 'resolve' && typeof renderPayoutAnalysisChart === 'function') {
     setTimeout(function () { renderPayoutAnalysisChart(); }, 60);
   }
+  // Refresh the trading tab charts/preview on entry — the canvases are sized
+  // (and the preview curve drawn from current inputs) only once visible, so
+  // without this the initial chart shows stale data until a manual nudge.
+  if (tabId === 'distribution' && typeof refreshDistCharts === 'function') {
+    setTimeout(function () { refreshDistCharts(); }, 60);
+  }
   // Trigger chart resize on tab switch
   setTimeout(function () { resizeVisibleCharts(); }, 50);
 }
@@ -765,29 +771,14 @@ function toggleSolvencyStats(enabled) {
   solvencyAwareStats = !!enabled;
   var label = document.getElementById('solvencyStatsLabel');
   if (label) label.textContent = enabled ? 'On' : 'Off';
-  if (!dualMarket || !dualMarket.initialized) return;
-
-  // Only re-render the PREVIEW (and only if it is already on screen). The toggle
-  // must never touch the portfolio stats box — re-rendering it shifts the layout
-  // ("a box appears below the preview"). The portfolio Peak Payout still honors
-  // this mode via displayPeakPayout on its next natural refresh (after a trade).
-  var previewSplit = document.getElementById('distPreviewStats');
-  var previewCombined = document.getElementById('distPreviewCombined');
-  var previewVisible = (previewSplit && previewSplit.style.display !== 'none') ||
-    (previewCombined && previewCombined.style.display !== 'none');
-  if (previewVisible && typeof updatePreviewStats === 'function') updatePreviewStats();
-}
-
-// Peak payout to display for a trader's CURRENT holdings, honoring the Solvency
-// toggle. Raw = portfolio.peakPayout (pre-solvency). Solvency-aware = max over
-// outcomes of getTraderPayoutPerOutcome (claimScale + redemption applied).
-function displayPeakPayout(engineObj, traderName, rawPeak) {
-  if (!solvencyAwareStats || !engineObj || !traderName) return rawPeak;
-  var ppo = engineObj.getTraderPayoutPerOutcome(traderName);
-  if (!ppo) return rawPeak;
-  var m = 0;
-  for (var i = 0; i < ppo.length; i++) if (ppo[i] > m) m = ppo[i];
-  return m;
+  // Re-render the trading tab through the SAME path a trader change uses
+  // (refreshDistStats + refreshCombinedDistStats + updateDistPreview +
+  // applyStatsMode). This updates every solvency-dependent value — preview
+  // Max Payout AND the position-box Peak Payout — with the correct layout
+  // (applyStatsMode keeps the grid/table mode intact, so no box "appears").
+  if (dualMarket && dualMarket.initialized && typeof refreshDistCharts === 'function') {
+    refreshDistCharts();
+  }
 }
 
 function setChartMode(mode, btn) {
@@ -1510,23 +1501,21 @@ function refreshCombinedDistStats(traderName) {
     return;
   }
 
-  var portfolios = dualMarket.getPortfolios(traderName);
+  var portfolios = dualMarket.getPortfolios(traderName, solvencyAwareStats);
   if (!portfolios) return;
   var cp = portfolios.lmsr;
   var ip = portfolios.l2;
 
-  table.innerHTML = buildComparisonTableHtml(cp, ip, traderName);
+  table.innerHTML = buildComparisonTableHtml(cp, ip);
 }
 
-function buildComparisonTableHtml(cp, ip, traderName) {
-  var cPeak = displayPeakPayout(dualMarket.lmsr, traderName, cp.peakPayout);
-  var iPeak = displayPeakPayout(dualMarket.l2, traderName, ip.peakPayout);
+function buildComparisonTableHtml(cp, ip) {
   var rows = [
     { label: 'Vault', c: dualMarket.lmsr.getPool(), i: dualMarket.l2.getPool(), style: '' },
     { label: 'Wallet', c: cp.wallet, i: ip.wallet, style: '' },
     { label: 'Holdings', c: cp.totalHoldings, i: ip.totalHoldings, style: '' },
     { label: 'E[Payout]', c: cp.expectedPayout, i: ip.expectedPayout, style: '' },
-    { label: 'Peak Payout', c: cPeak, i: iPeak, style: '' },
+    { label: 'Peak Payout', c: cp.peakPayout, i: ip.peakPayout, style: '' },
     { label: 'Spent', c: cp.totalSpent, i: ip.totalSpent, style: 'color:var(--danger)' },
     { label: 'Received', c: cp.totalReceived, i: ip.totalReceived, style: 'color:var(--success)' },
     { label: 'Unreal. PnL', c: cp.unrealizedPnL, i: ip.unrealizedPnL, style: 'pnl' },
@@ -2396,16 +2385,14 @@ function refreshDistStats(traderName) {
     return;
   }
 
-  var portfolios = dualMarket.getPortfolios(traderName);
+  var portfolios = dualMarket.getPortfolios(traderName, solvencyAwareStats);
   if (!portfolios) return;
 
   var cp = portfolios.lmsr;
   var ip = portfolios.l2;
 
   function statsHtml(p, engine) {
-    var engineObj = engine === 'lmsr' ? dualMarket.lmsr : dualMarket.l2;
-    var k = engineObj.getPool();
-    var peak = displayPeakPayout(engineObj, traderName, p.peakPayout);
+    var k = engine === 'lmsr' ? dualMarket.lmsr.getPool() : dualMarket.l2.getPool();
     var pnlClass = p.unrealizedPnL >= 0 ? 'positive' : 'negative';
     var epClass = p.expectedPayout > p.totalSpent ? 'positive' : (p.expectedPayout < p.totalSpent && p.totalSpent > 0 ? 'negative' : '');
     return '' +
@@ -2413,7 +2400,7 @@ function refreshDistStats(traderName) {
       '<div class="result-item"><div class="result-label">Wallet</div><div class="result-value">' + formatCompact(p.wallet) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Holdings</div><div class="result-value">' + formatCompact(p.totalHoldings) + '</div></div>' +
       '<div class="result-item"><div class="result-label">E[Payout]</div><div class="result-value ' + epClass + '">' + formatCompact(p.expectedPayout) + '</div></div>' +
-      '<div class="result-item"><div class="result-label">Peak Payout</div><div class="result-value">' + formatCompact(peak) + '</div></div>' +
+      '<div class="result-item"><div class="result-label">Peak Payout</div><div class="result-value">' + formatCompact(p.peakPayout) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Spent</div><div class="result-value" style="color:var(--danger)">' + formatCompact(p.totalSpent) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Received</div><div class="result-value" style="color:var(--success)">' + formatCompact(p.totalReceived) + '</div></div>' +
       '<div class="result-item"><div class="result-label">Unreal. PnL</div><div class="result-value ' + pnlClass + '">' + formatPnl(p.unrealizedPnL) + '</div></div>';

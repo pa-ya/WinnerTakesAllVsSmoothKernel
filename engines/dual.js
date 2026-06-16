@@ -170,14 +170,14 @@ DualMarket.prototype.resolve = function (value) {
   return { lmsr: lmsrResult, l2: l2Result };
 };
 
-DualMarket.prototype.getPortfolios = function (traderName) {
+DualMarket.prototype.getPortfolios = function (traderName, solvencyAware) {
   if (!this.initialized || !this.traders[traderName]) return null;
 
   this._setWallets(traderName, 'lmsr');
-  var lmsrPortfolio = this.lmsr.getTraderPortfolio(traderName);
+  var lmsrPortfolio = this.lmsr.getTraderPortfolio(traderName, solvencyAware);
 
   this._setWallets(traderName, 'l2');
-  var l2Portfolio = this.l2.getTraderPortfolio(traderName);
+  var l2Portfolio = this.l2.getTraderPortfolio(traderName, solvencyAware);
 
   return { lmsr: lmsrPortfolio, l2: l2Portfolio };
 };

@@ -551,6 +551,26 @@
   var sol3 = sa3.previewPeakPayout(sp3.tokensPerBin, sp3.cost - sp3.fee, true);
   assert(sol3.peakPayout <= raw3.peakPayout + 1e-6, 'L2 solvency-aware peak <= raw peak');
 
+  // (e) getTraderPortfolio(solvencyAware) caps every payout-derived figure
+  var pf = new LmsrMarket(N, 0, 100, 5000, { tradeFeeBps: 0 });
+  globalTraders = { z: { wallet: 1e12 } };
+  for (var p24 = 0; p24 < 5; p24++) pf.distributionBuy('z', 50, 5, 9000); // over-claim the pool
+  var rawPort = pf.getTraderPortfolio('z', false);
+  var solPort = pf.getTraderPortfolio('z', true);
+  assert(solPort.peakPayout < rawPort.peakPayout, 'portfolio: solvency peakPayout < raw');
+  assert(solPort.expectedPayout < rawPort.expectedPayout, 'portfolio: solvency E[payout] < raw');
+  assert(solPort.unrealizedPnL < rawPort.unrealizedPnL, 'portfolio: solvency unrealizedPnL < raw (derived)');
+  // default (no flag) is unchanged
+  var defPort = pf.getTraderPortfolio('z');
+  assert(near(defPort.peakPayout, rawPort.peakPayout, 1e-9), 'portfolio: default == raw (no flag)');
+  // when pool covers claims, solvency == raw
+  var pf2 = new LmsrMarket(N, 0, 100, L, { tradeFeeBps: 0 });
+  globalTraders = { z: { wallet: 1e12 } };
+  pf2.distributionBuy('z', 50, 8, 3000);
+  var r2 = pf2.getTraderPortfolio('z', false), s2 = pf2.getTraderPortfolio('z', true);
+  assert(near(r2.peakPayout, s2.peakPayout, 0.01) && near(r2.expectedPayout, s2.expectedPayout, 0.01),
+    'portfolio: solvency == raw when pool covers claims');
+
   // ============================================================
   // SUMMARY
   // ============================================================

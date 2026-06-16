@@ -257,7 +257,12 @@ SmoothKernel.resolve = function (value) {
   return { winningBin: bin, payouts: payouts, lpResidual: lpResidual, claimScale: claimScale };
 };
 
-SmoothKernel.getTraderPortfolio = function (traderName) {
+// solvencyAware (optional): when true, every payout-derived figure
+// (expectedPayout, peakPayout, and therefore unrealizedPnL / pnlPct) applies the
+// settlement claimScale = min(1, pool / totalClaim) at each winning bin — the
+// realistic, vault-capped payout. When false (default) the raw pre-solvency
+// figures are returned, byte-for-byte identical to before.
+SmoothKernel.getTraderPortfolio = function (traderName, solvencyAware) {
   var gt = globalTraders[traderName];
   if (!gt) return null;
   var th = this.traderHoldings[traderName];
@@ -278,18 +283,36 @@ SmoothKernel.getTraderPortfolio = function (traderName) {
 
   var KW = this.kernelWidth;
   var redemptionFactor = 1 - this.redemptionFeeBps / 10000;
+
+  // For solvency-aware figures we need the pool and the TOTAL kernel claim
+  // (across all traders) at each winning bin to compute claimScale.
+  var pool = 0, totalHPB = null;
+  if (solvencyAware) {
+    pool = this.getPool();
+    totalHPB = [];
+    for (var i = 0; i < this.N; i++) totalHPB.push(0);
+    for (var nm in this.traderHoldings) {
+      var thh = this.traderHoldings[nm];
+      for (var i = 0; i < this.N; i++) totalHPB[i] += thh.holdings[i];
+    }
+  }
+
   var peakPayout = 0;
   for (var w = 0; w < this.N; w++) {
-    var payoutIfW = 0;
+    var payoutIfW = 0, totalClaimW = 0;
     var lo = Math.max(0, w - KW);
     var hi = Math.min(this.N - 1, w + KW);
     for (var j = lo; j <= hi; j++) {
-      payoutIfW += th.holdings[j] * (1 - Math.abs(j - w) / (KW + 1));
+      var kw = 1 - Math.abs(j - w) / (KW + 1);
+      payoutIfW += th.holdings[j] * kw;
+      if (solvencyAware) totalClaimW += totalHPB[j] * kw;
     }
-    expectedPayout += probs[w] * payoutIfW * redemptionFactor;
-    if (payoutIfW > peakPayout) { peakPayout = payoutIfW; peakBin = w; }
+    var cs = (solvencyAware && totalClaimW > pool && totalClaimW > 0) ? pool / totalClaimW : 1;
+    var scaled = payoutIfW * cs;
+    expectedPayout += probs[w] * scaled * redemptionFactor;
+    if (scaled > peakPayout) { peakPayout = scaled; peakBin = w; }
   }
-  peakPayout *= (1 - this.redemptionFeeBps / 10000);
+  peakPayout *= redemptionFactor;
 
   for (var j = 0; j < this.N; j++) totalHoldings += th.holdings[j];
 
