@@ -372,6 +372,11 @@
   // 19. Utilities
   // ============================================================
   suite('19. Utilities');
+  // formatCompact/formatPct read the global `settings` (number format + decimals),
+  // which the app loads from localStorage in the browser. Pin them so these
+  // assertions are deterministic regardless of the user's saved display settings.
+  settings.numberFormat = 'short';
+  settings.decimalPrecision = 1;
   assert(formatCompact(1500) === '1.5K', 'formatCompact 1.5K');
   assert(formatCompact(2.5e6) === '2.5M', 'formatCompact 2.5M');
   assert(formatCompact(null) === '—', 'formatCompact null → dash');

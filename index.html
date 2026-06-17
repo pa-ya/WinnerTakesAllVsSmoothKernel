@@ -1274,8 +1274,8 @@ function updateCombinedDistPreview(cPreviewArg, iPreviewArg) {
     }
   }
 
-  chart.data.datasets[3].data = cPreview || empty;
-  chart.data.datasets[4].data = iPreview || empty;
+  chart.data.datasets[3].data = cPreview ? cPreview.tokensPerBin : empty;
+  chart.data.datasets[4].data = iPreview ? iPreview.tokensPerBin : empty;
   syncChartYAxes(chart);
   chart.update('none');
 }
@@ -1975,6 +1975,9 @@ function createMarket() {
   // Initialize charts
   initDistCharts();
   initCombinedDistChart();
+  // Draw the preview curve for the default mu/sigma/amount so the initial chart
+  // matches the inputs (otherwise the preview stays empty until a manual nudge).
+  updateDistPreview();
 
   // Refresh trader list and selectors
   renderTraderList();
