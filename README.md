@@ -98,6 +98,13 @@ The left engine has two selectable variants (set in the Setup tab):
 - Payout analysis chart comparing trader returns across all possible outcomes
 - Detailed payout tables: per-trader and per-LP results (gross, fees, P&L)
 - Solvency factor and LP residual per engine
+- **Stories** (after resolution): generate a full Markdown narrative of the
+  market's life — built purely by replaying the recorded action timeline (no AI).
+  Four sections: (1) brief narrative of the most impactful actions, (2) final
+  tables (config, state, trader/LP payouts), (3) per-user step-by-step stories on
+  both engines, (4) AMM comparison with a three-lens verdict. Rendered inline as a
+  Markdown preview; **Save .md** writes it out via the browser's Save-As dialog
+  (falling back to a download)
 
 ### General
 - Dark/light theme toggle
@@ -142,6 +149,7 @@ comparison/
 │   ├── lmsr.js             # LMSR engine
 │   └── dual.js             # DualMarket orchestrator (runs both engines side-by-side)
 ├── comparison.js           # UI glue only (theme, formatting, settings, init)
+├── story.js                # Stories: Markdown renderer + market-report builder (no AI)
 ├── styles.css              # Theming (dark/light), layout, components
 ├── test-engines.html       # Standalone engine unit tests (LMSR + L2-norm + kernel)
 ├── LMSR_REFACTOR_PLAN.md   # Refactor plan / design decisions
@@ -150,4 +158,4 @@ comparison/
 ```
 
 Scripts load in dependency order: `engines/core.js` → `l2.js` → `lmsr.js` →
-`dual.js` → `comparison.js`. No build step — plain `<script>` tags.
+`dual.js` → `comparison.js` → `story.js`. No build step — plain `<script>` tags.

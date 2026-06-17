@@ -607,6 +607,33 @@
         </div>
       </div>
     </div>
+
+    <!-- Stories: generate button (shown only after resolution) -->
+    <div class="setup-card" id="storyGenerateCard" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div class="setup-card-title" style="margin-bottom:2px;">Stories</div>
+          <div style="font-size:0.8rem;color:var(--text-muted);">
+            Generate a full Markdown narrative of this market's life — every state-changing
+            action, final tables, per-user stories, and the AMM comparison verdict.
+          </div>
+        </div>
+        <button class="btn btn-primary" id="storyGenerateBtn" onclick="generateStoryReport()">Generate Story</button>
+      </div>
+    </div>
+
+    <!-- Stories: rendered report + save -->
+    <div class="setup-card" id="storyCard" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+        <div class="setup-card-title" style="margin-bottom:0;">Market Story</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-outline" id="storyRegenBtn" onclick="generateStoryReport()">Regenerate</button>
+          <button class="btn btn-sm btn-primary" id="storySaveBtn" onclick="saveStoryReport()">Save .md</button>
+        </div>
+      </div>
+      <div class="md-preview" id="storyPreview"></div>
+    </div>
+
   </div>
 
 </div><!-- .main-content -->
@@ -683,6 +710,7 @@
 <script src="engines/lmsr.js"></script>
 <script src="engines/dual.js"></script>
 <script src="comparison.js"></script>
+<script src="story.js"></script>
 <script>
 // ============================================================
 // CHART.JS PLUGIN: Winning bin vertical marker
@@ -1962,6 +1990,8 @@ function createMarket() {
   document.getElementById('combinedPayoutWrapper').style.display = 'none';
   document.getElementById('kernelVizCard').style.display = 'none';
   document.getElementById('payoutAnalysisCard').style.display = 'none';
+  document.getElementById('storyGenerateCard').style.display = 'none';
+  document.getElementById('storyCard').style.display = 'none';
 
   // Hide preview stats
   var ps = document.getElementById('distPreviewStats');
@@ -3347,6 +3377,7 @@ function resolveMarket() {
   document.getElementById('payoutAnalysisCard').style.display = '';
 
   applyStatsMode();
+  showStoryButton();
 
   var label = dualMarket.lmsr.getLabels()[result.lmsr.winningBin] || result.lmsr.winningBin;
   showToast('Resolved at ' + value.toFixed(1) + ' \u2192 bin ' + result.lmsr.winningBin + ' (' + label + ')', 'resolve');
@@ -3705,8 +3736,13 @@ function loadMarketState() {
     refreshDistCharts();
 
     if (dualMarket.lmsr.resolved) {
-      // Re-resolve to get accurate lpResidual/claimScale for display
+      // Re-resolve to get accurate lpResidual/claimScale for display. This would
+      // append a duplicate 'resolve' entry to the restored timeline, so snapshot
+      // and restore history around the call.
+      var savedHistory = dualMarket.history;
+      dualMarket.history = savedHistory.slice();
       var rr = dualMarket.resolve(dualMarket.lmsr.lastResolveValue);
+      dualMarket.history = savedHistory;
       lastResolveResult = rr;
       renderResolveSummary(rr, dualMarket.lmsr.lastResolveValue);
       renderPayoutTable(rr);
@@ -3717,6 +3753,7 @@ function loadMarketState() {
       applyResolutionMarkers();
       renderPayoutAnalysisChart();
       document.getElementById('payoutAnalysisCard').style.display = '';
+      showStoryButton();
     }
 
     updateSaveLoadBtn();

@@ -16,6 +16,7 @@
 <script src="engines/lmsr.js"></script>
 <script src="engines/dual.js"></script>
 <script src="comparison.js"></script>
+<script src="story.js"></script>
 <script>
 (function () {
   var pass = 0, fail = 0;
@@ -575,6 +576,78 @@
   var r2 = pf2.getTraderPortfolio('z', false), s2 = pf2.getTraderPortfolio('z', true);
   assert(near(r2.peakPayout, s2.peakPayout, 0.01) && near(r2.expectedPayout, s2.expectedPayout, 0.01),
     'portfolio: solvency == raw when pool covers claims');
+
+  // ============================================================
+  // 25. Action-history capture (DualMarket timeline)
+  // ============================================================
+  suite('25. Action-history capture');
+  var hm = new DualMarket();
+  hm.init(32, 0, 100, 10000, { tradeFeeBps: 100, lpFeeSharePct: 50, redemptionFeeBps: 50 }, 3);
+  hm.addTrader('A', 80000);
+  hm.addTrader('B', 80000);
+  hm.addLiquidity('B', 5000);
+  hm.distributionBuy('A', 50, 8, 3000);
+  hm.discreteBuy('B', 20, 1000);
+  hm.distributionSell('A', 50, 8, 1e9);
+  hm.sellAll('B');
+  hm.resolve(52);
+
+  var htypes = hm.history.map(function (e) { return e.type; });
+  assert(htypes[0] === 'create', 'history starts with create');
+  assert(htypes.filter(function (t) { return t === 'join'; }).length === 2, 'two join events');
+  assert(htypes.indexOf('addLiquidity') > -1 && htypes.indexOf('distributionBuy') > -1 &&
+    htypes.indexOf('discreteBuy') > -1 && htypes.indexOf('distributionSell') > -1 &&
+    htypes.indexOf('sellAll') > -1, 'all action types recorded');
+  assert(htypes[htypes.length - 1] === 'resolve', 'history ends with resolve');
+  var buyE = hm.history.filter(function (e) { return e.type === 'distributionBuy'; })[0];
+  assert(buyE.before && buyE.after && buyE.before.lmsr && buyE.after.l2, 'trade entry has before/after digests for both engines');
+  assert(buyE.after.lmsr.pool > buyE.before.lmsr.pool, 'after-digest pool grew on a buy (LMSR)');
+  assert(buyE.result && buyE.result.lmsr && typeof buyE.result.lmsr.cost === 'number', 'trade entry carries trimmed result');
+  assert(buyE.actorState && buyE.actorState.trader.lmsr && typeof buyE.actorState.trader.lmsr.peakPayout === 'number',
+    'trade entry carries per-actor portfolio snapshot');
+  // digest contains only scalars (no per-bin arrays)
+  var dgKeys = Object.keys(buyE.after.lmsr);
+  assert(dgKeys.every(function (k) { return typeof buyE.after.lmsr[k] !== 'object'; }), 'digest is scalar-only (compact)');
+  // serialize round-trips history
+  var hmReload = DualMarket.loadFromSave(hm.serialize());
+  assert(hmReload.history.length === hm.history.length, 'history survives serialize/load round-trip');
+  assert(JSON.stringify(hmReload.history.map(function (e) { return e.type; })) === JSON.stringify(htypes),
+    'reloaded history types identical');
+  // failed actions do not record (insufficient wallet)
+  var hlen = hm.history.length;
+  var poorMkt = new DualMarket();
+  poorMkt.init(16, 0, 100, 5000, {}, 3);
+  poorMkt.addTrader('Poor', 10);
+  var preLen = poorMkt.history.length;
+  poorMkt.discreteBuy('Poor', 4, 99999); // exceeds wallet -> error
+  assert(poorMkt.history.length === preLen, 'failed trade is not recorded');
+
+  // ============================================================
+  // 26. Stories: markdown renderer + report builder
+  // ============================================================
+  suite('26. Stories (markdown + report)');
+  // markdown renderer subset
+  var mdH = renderMarkdown('# Title\n\nPara **b** *i* `c`.\n\n| A | B |\n| :--- | ---: |\n| 1 | 2 |\n\n- x\n- y\n\n> q\n\n---\n');
+  assert(mdH.indexOf('<h1>Title</h1>') > -1, 'renderMarkdown: heading');
+  assert(mdH.indexOf('<strong>b</strong>') > -1, 'renderMarkdown: bold');
+  assert(mdH.indexOf('<em>i</em>') > -1, 'renderMarkdown: italic');
+  assert(mdH.indexOf('<code>c</code>') > -1, 'renderMarkdown: inline code');
+  assert(mdH.indexOf('<table>') > -1 && mdH.indexOf('<td>1</td>') > -1, 'renderMarkdown: table');
+  assert(mdH.indexOf('<ul>') > -1 && mdH.indexOf('<li>x</li>') > -1, 'renderMarkdown: list');
+  assert(mdH.indexOf('<blockquote>q</blockquote>') > -1, 'renderMarkdown: blockquote');
+  assert(mdH.indexOf('<hr>') > -1, 'renderMarkdown: horizontal rule');
+  assert(renderMarkdown('a < b & c').indexOf('&lt; b &amp; c') > -1, 'renderMarkdown: HTML-escapes content');
+  // report builder over the captured market
+  var story = buildStoryMarkdown(hm);
+  assert(story.indexOf('## 1.') > -1 && story.indexOf('## 2.') > -1 &&
+    story.indexOf('## 3.') > -1 && story.indexOf('## 4.') > -1, 'story has all four sections');
+  assert(story.indexOf('Market Configuration') > -1, 'story has config table');
+  assert(story.indexOf('4.4 Overall') > -1, 'story has overall verdict');
+  assert(story.indexOf('[object') === -1 && story.indexOf('undefined') === -1 && story.indexOf('NaN') === -1,
+    'story has no [object/undefined/NaN artifacts');
+  var storyHtml = renderMarkdown(story);
+  assert(storyHtml.indexOf('<table>') > -1 && storyHtml.indexOf('<h2>') > -1, 'rendered story produces tables + headings');
+  assert(/(^|\n)\|/.test(storyHtml) === false, 'rendered story leaves no raw pipe rows');
 
   // ============================================================
   // SUMMARY

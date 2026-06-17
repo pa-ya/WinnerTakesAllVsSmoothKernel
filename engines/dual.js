@@ -19,7 +19,125 @@ function DualMarket() {
   this.l2 = null;     // L2Market
   this.traders = {};     // { name: { lmsrWallet, l2Wallet, initialBalance } }
   this.initialized = false;
+  // Ordered action timeline (creation -> LPs -> trades -> resolve). Each entry is
+  // a compact, scalar-only record (see _record / _digestEngine) so the full
+  // history serializes to localStorage cheaply (~600 bytes/action). Drives the
+  // Stories report. Captured from this point forward; pre-feature saves have none.
+  this.history = [];
 }
+
+// --- Action-history capture ---------------------------------------------------
+// Trim an engine result to scalar fields only (drop per-bin tokensPerBin /
+// payouts arrays) so history stays compact and serializable.
+DualMarket._RESULT_KEYS = [
+  'tokensOut', 'totalTokens', 'totalSold', 'cost', 'fee', 'lpFee', 'net',
+  'newProb', 'peakPayout', 'peakBin', 'maxProfit', 'collateralOut', 'grossOut',
+  'tokensReturned', 'sharesReceived', 'totalShares', 'poolFraction', 'amount',
+  'sharesBurned', 'feeShare', 'totalPayout', 'remainingShares',
+  'winningBin', 'lpResidual', 'claimScale',
+];
+DualMarket._trimResult = function (r) {
+  if (!r || typeof r !== 'object') return null;
+  var out = {};
+  for (var i = 0; i < DualMarket._RESULT_KEYS.length; i++) {
+    var k = DualMarket._RESULT_KEYS[i];
+    if (typeof r[k] === 'number' && isFinite(r[k])) out[k] = r[k];
+  }
+  return out;
+};
+
+// Compact, scalar-only state digest of one engine (no per-bin arrays).
+DualMarket.prototype._digestEngine = function (eng) {
+  var probs = eng.getProbabilities();
+  var N = eng.N, peakBin = 0, peakProb = -1, mean = 0, entropy = 0;
+  for (var i = 0; i < N; i++) {
+    var p = probs[i];
+    if (p > peakProb) { peakProb = p; peakBin = i; }
+    mean += eng.centers[i] * p;
+    if (p > 1e-12) entropy -= p * Math.log(p);
+  }
+  entropy = N > 1 ? entropy / Math.log(N) : 0;  // normalized 0..1 (1 = uniform)
+  var sumTraderTokens = 0;
+  for (var nm in eng.traderHoldings) {
+    var h = eng.traderHoldings[nm].holdings;
+    for (var j = 0; j < N; j++) sumTraderTokens += h[j];
+  }
+  var d = {
+    pool: eng.getPool(),
+    peakBin: peakBin, peakProb: peakProb, peakValue: eng.centers[peakBin],
+    mean: mean, entropy: entropy,
+    lpFees: eng.accumulatedLpFees, lpShares: eng.totalLpShares,
+    traderTokens: sumTraderTokens,
+  };
+  if (typeof eng.k === 'number') d.k = eng.k;
+  if (typeof eng.b === 'number') d.b = eng.b;
+  if (typeof eng.seed === 'number') d.seed = eng.seed;
+  if (eng.mode) d.mode = eng.mode;
+  return d;
+};
+
+DualMarket.prototype._digest = function () {
+  if (!this.initialized) return null;
+  return { lmsr: this._digestEngine(this.lmsr), l2: this._digestEngine(this.l2) };
+};
+
+// Trim a trader portfolio to scalar fields for compact per-step history.
+DualMarket._PF_KEYS = ['totalHoldings', 'expectedPayout', 'peakPayout', 'peakBin',
+  'wallet', 'totalSpent', 'totalReceived', 'unrealizedPnL', 'pnlPct'];
+DualMarket._LP_KEYS = ['shares', 'poolFraction', 'deposited', 'withdrawn',
+  'feeEarnings', 'currentValue', 'unrealizedPnL', 'pnlPct'];
+DualMarket._pick = function (obj, keys) {
+  if (!obj) return null;
+  var out = {};
+  for (var i = 0; i < keys.length; i++) {
+    if (typeof obj[keys[i]] === 'number' && isFinite(obj[keys[i]])) out[keys[i]] = obj[keys[i]];
+  }
+  return out;
+};
+
+// Snapshot the actor's post-action trader portfolio and (if any) LP position on
+// both engines — lets the Stories report narrate how each user's E[payout] /
+// peak payout / P&L evolved step by step. Read-only (no market mutation).
+DualMarket.prototype._actorSnapshot = function (name) {
+  if (!name || !this.traders[name]) return null;
+  var pf = this.getPortfolios(name);
+  var snap = {
+    trader: {
+      lmsr: pf ? DualMarket._pick(pf.lmsr, DualMarket._PF_KEYS) : null,
+      l2: pf ? DualMarket._pick(pf.l2, DualMarket._PF_KEYS) : null,
+    },
+    lp: null,
+  };
+  var hasLp = (this.lmsr.lpProviders[name] && this.lmsr.lpProviders[name].shares > 0) ||
+    (this.l2.lpProviders[name] && this.l2.lpProviders[name].shares > 0);
+  if (hasLp) {
+    var lp = this.getLpPortfolios(name);
+    snap.lp = {
+      lmsr: lp ? DualMarket._pick(lp.lmsr, DualMarket._LP_KEYS) : null,
+      l2: lp ? DualMarket._pick(lp.l2, DualMarket._LP_KEYS) : null,
+    };
+  }
+  return snap;
+};
+
+// Append a timeline entry. `before` is the digest captured before the action;
+// the after-digest is taken now (post-mutation).
+DualMarket.prototype._record = function (type, actor, params, before, result) {
+  var entry = {
+    seq: this.history.length,
+    type: type,
+    actor: actor || null,
+    params: params || {},
+    before: before || null,
+    after: this._digest(),
+    result: result || null,
+  };
+  // Per-step actor portfolio (skip 'join' — no market interaction yet).
+  if (actor && this.traders[actor] && type !== 'join') {
+    entry.actorState = this._actorSnapshot(actor);
+  }
+  this.history.push(entry);
+};
 
 DualMarket.prototype.init = function (N, rangeMin, rangeMax, liquidity, fees, kernelWidth) {
   var kw = (typeof kernelWidth === 'number') ? kernelWidth : DEFAULT_KERNEL_WIDTH;
@@ -61,6 +179,14 @@ DualMarket.prototype.init = function (N, rangeMin, rangeMax, liquidity, fees, ke
     kernelWidth: kw,
   };
 
+  // Timeline starts with creation (Creator's initial liquidity == the first LP).
+  this.history = [];
+  this._record('create', 'Creator', {
+    N: N, rangeMin: rangeMin, rangeMax: rangeMax, liquidity: liquidity,
+    kernelWidth: kw, lmsrMode: lmsrMode, lsSensitivity: lsSensitivity,
+    tradeFeeBps: f.tradeFeeBps, lpFeeSharePct: f.lpFeeSharePct, redemptionFeeBps: f.redemptionFeeBps,
+  }, null, null);
+
   return { lmsr: this.lmsr, l2: this.l2 };
 };
 
@@ -69,6 +195,8 @@ DualMarket.prototype.addTrader = function (name, balance) {
   if (this.traders[name]) return { error: 'Trader already exists: ' + name };
 
   this.traders[name] = { lmsrWallet: balance, l2Wallet: balance, initialBalance: balance };
+  // Roster event: a participant joined (no market-state change; impact score 0).
+  this._record('join', name, { balance: balance }, this._digest(), { amount: balance });
   return { name: name, balance: balance };
 };
 
@@ -120,26 +248,43 @@ DualMarket.prototype._dualTrade = function (method, traderName, args) {
   return { lmsr: lmsrResult, l2: l2Result };
 };
 
+// Run a dual trade and, on success, append a timeline entry. `before` must be
+// captured before the mutation; `params` describes the action for the report.
+DualMarket.prototype._tradeAndRecord = function (method, traderName, args, type, params) {
+  var before = this._digest();
+  var r = this._dualTrade(method, traderName, args);
+  if (!r.error && r.lmsr && !r.lmsr.error) {
+    this._record(type, traderName, params,
+      before, { lmsr: DualMarket._trimResult(r.lmsr), l2: DualMarket._trimResult(r.l2) });
+  }
+  return r;
+};
+
 DualMarket.prototype.discreteBuy = function (traderName, binIdx, amount) {
-  return this._dualTrade('discreteBuy', traderName, [binIdx, amount]);
+  return this._tradeAndRecord('discreteBuy', traderName, [binIdx, amount],
+    'discreteBuy', { binIdx: binIdx, amount: amount });
 };
 
 DualMarket.prototype.discreteSell = function (traderName, binIdx, amount) {
-  return this._dualTrade('discreteSell', traderName, [binIdx, amount]);
+  return this._tradeAndRecord('discreteSell', traderName, [binIdx, amount],
+    'discreteSell', { binIdx: binIdx, amount: amount });
 };
 
 DualMarket.prototype.distributionBuy = function (traderName, mu, sigma, amount) {
-  return this._dualTrade('distributionBuy', traderName, [mu, sigma, amount]);
+  return this._tradeAndRecord('distributionBuy', traderName, [mu, sigma, amount],
+    'distributionBuy', { mu: mu, sigma: sigma, amount: amount });
 };
 
 DualMarket.prototype.distributionSell = function (traderName, mu, sigma, amount) {
-  return this._dualTrade('distributionSell', traderName, [mu, sigma, amount]);
+  return this._tradeAndRecord('distributionSell', traderName, [mu, sigma, amount],
+    'distributionSell', { mu: mu, sigma: sigma, amount: amount });
 };
 
 DualMarket.prototype.sellAll = function (traderName) {
   if (!this.initialized) return { error: 'Market not initialized' };
   if (!this.traders[traderName]) return { error: 'Unknown trader: ' + traderName };
 
+  var before = this._digest();
   this._setWallets(traderName, 'lmsr');
   var lmsrResult = this.lmsr.sellAll(traderName);
   if (lmsrResult.error) {
@@ -151,12 +296,15 @@ DualMarket.prototype.sellAll = function (traderName) {
   var l2Result = this.l2.sellAll(traderName);
   this._saveWallet(traderName, 'l2');
 
+  this._record('sellAll', traderName, {}, before,
+    { lmsr: DualMarket._trimResult(lmsrResult), l2: DualMarket._trimResult(l2Result) });
   return { lmsr: lmsrResult, l2: l2Result };
 };
 
 DualMarket.prototype.resolve = function (value) {
   if (!this.initialized) return { error: 'Market not initialized' };
 
+  var before = this._digest();
   for (var name in this.traders) {
     this._setWallets(name, 'lmsr');
   }
@@ -167,6 +315,8 @@ DualMarket.prototype.resolve = function (value) {
   }
   var l2Result = this.l2.resolve(value);
 
+  this._record('resolve', null, { value: value }, before,
+    { lmsr: DualMarket._trimResult(lmsrResult), l2: DualMarket._trimResult(l2Result) });
   return { lmsr: lmsrResult, l2: l2Result };
 };
 
@@ -211,6 +361,7 @@ DualMarket.prototype.addLiquidity = function (lpName, amount) {
   if (!this.initialized) return { error: 'Market not initialized' };
   if (!this.traders[lpName]) return { error: 'Unknown user: ' + lpName };
 
+  var before = this._digest();
   this._setWallets(lpName, 'lmsr');
   var lmsrResult = this.lmsr.addLiquidity(lpName, amount);
   if (lmsrResult.error) return { error: lmsrResult.error, lmsr: lmsrResult, l2: null };
@@ -220,6 +371,8 @@ DualMarket.prototype.addLiquidity = function (lpName, amount) {
   var l2Result = this.l2.addLiquidity(lpName, amount);
   this._saveWallet(lpName, 'l2');
 
+  this._record('addLiquidity', lpName, { amount: amount }, before,
+    { lmsr: DualMarket._trimResult(lmsrResult), l2: DualMarket._trimResult(l2Result) });
   return { lmsr: lmsrResult, l2: l2Result };
 };
 
@@ -227,6 +380,7 @@ DualMarket.prototype.removeLiquidity = function (lpName, amount) {
   if (!this.initialized) return { error: 'Market not initialized' };
   if (!this.traders[lpName]) return { error: 'Unknown user: ' + lpName };
 
+  var before = this._digest();
   this._setWallets(lpName, 'lmsr');
   var lmsrResult = this.lmsr.removeLiquidity(lpName, amount);
   if (lmsrResult.error) return { error: lmsrResult.error, lmsr: lmsrResult, l2: null };
@@ -236,6 +390,8 @@ DualMarket.prototype.removeLiquidity = function (lpName, amount) {
   var l2Result = this.l2.removeLiquidity(lpName, amount);
   this._saveWallet(lpName, 'l2');
 
+  this._record('removeLiquidity', lpName, { amount: amount }, before,
+    { lmsr: DualMarket._trimResult(lmsrResult), l2: DualMarket._trimResult(l2Result) });
   return { lmsr: lmsrResult, l2: l2Result };
 };
 
@@ -244,6 +400,7 @@ DualMarket.prototype.serialize = function () {
   return JSON.stringify({
     initConfig: this.initConfig,
     traders: this.traders,
+    history: this.history,
     lmsr: this.lmsr.getState(),
     l2: this.l2.getState(),
   });
@@ -257,6 +414,9 @@ DualMarket.loadFromSave = function (json) {
   dm.lmsr.loadState(d.lmsr);
   dm.l2.loadState(d.l2);
   dm.traders = d.traders;
+  // Restore the timeline if the save carries one (pre-feature saves do not).
+  // init() seeded a fresh 'create' entry; replace it with the saved history.
+  dm.history = Array.isArray(d.history) ? d.history : [];
   return dm;
 };
 
