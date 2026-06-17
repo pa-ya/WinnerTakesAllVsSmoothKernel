@@ -114,7 +114,6 @@ function updateAllCharts() {
       initDistCharts();
       if (typeof refreshDistCharts === 'function') refreshDistCharts();
     }
-    // Combined charts
     if (typeof initCombinedDistChart === 'function') initCombinedDistChart();
     if (typeof refreshCombinedDistChart === 'function') refreshCombinedDistChart();
     // Re-apply dataset visibility from checkbox states after chart recreation
@@ -124,10 +123,8 @@ function updateAllCharts() {
     if (dualMarket.lmsr.resolved && typeof renderKernelChart === 'function') {
       renderKernelChart(dualMarket.lmsr.winningBin);
     }
-    // LP charts
     if (typeof initLpPayoutCharts === 'function') initLpPayoutCharts();
     if (typeof refreshLpTab === 'function') refreshLpTab();
-    // Payout analysis chart
     if (typeof renderPayoutAnalysisChart === 'function') renderPayoutAnalysisChart();
   }
 }

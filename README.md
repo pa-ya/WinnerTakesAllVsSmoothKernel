@@ -142,13 +142,18 @@ Open `test-engines.html` to run the engine unit tests in the browser.
 
 ```
 comparison/
-├── index.html              # Full UI (all tabs and controls)
+├── index.html              # Markup only (tabs, controls, modals)
 ├── engines/
 │   ├── core.js             # Constants, globalTraders, shared math helpers, settlement mixin
 │   ├── l2.js               # L2-norm (hypersphere) engine
 │   ├── lmsr.js             # LMSR engine
 │   └── dual.js             # DualMarket orchestrator (runs both engines side-by-side)
-├── comparison.js           # UI glue only (theme, formatting, settings, init)
+├── comparison.js           # UI glue (theme, formatting, settings, shared utils)
+├── ui.js                   # Charts (Chart.js), tabs, settings modal, stats display
+├── setup.js                # Setup tab: market creation, custom bins, modals, input sync
+├── trading.js              # Trading tab: distribution trading + live preview
+├── liquidity.js            # Liquidity (LP) tab
+├── resolve.js              # Resolve tab, save/load, payout analysis, app init
 ├── story.js                # Stories: Markdown renderer + market-report builder (no AI)
 ├── styles.css              # Theming (dark/light), layout, components
 ├── test-engines.html       # Standalone engine unit tests (LMSR + L2-norm + kernel)
@@ -158,4 +163,7 @@ comparison/
 ```
 
 Scripts load in dependency order: `engines/core.js` → `l2.js` → `lmsr.js` →
-`dual.js` → `comparison.js` → `story.js`. No build step — plain `<script>` tags.
+`dual.js` → `comparison.js` → `story.js` → `ui.js` → `setup.js` → `trading.js` →
+`liquidity.js` → `resolve.js` (which holds app init). All share one global scope;
+HTML wires events via inline `onclick`/`oninput` handlers. No build step — plain
+`<script>` tags.

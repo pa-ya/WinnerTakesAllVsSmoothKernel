@@ -52,6 +52,9 @@ function mdInline(s) {
   s = s.replace(/`([^`]+)`/g, function (_, c) { return '<code>' + c + '</code>'; });
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+  // underscore emphasis: only at word boundaries (open after start/space/paren,
+  // close before end/space/punct) so snake_case and file_names stay intact.
+  s = s.replace(/(^|[\s(])_([^_\n]+?)_(?=$|[\s).,;:!?])/g, '$1<em>$2</em>');
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   return s;
 }
@@ -740,6 +743,35 @@ function showStoryButton() {
 }
 
 var _lastStoryMarkdown = '';
+var _storySignature = null; // resolution state the current story was built from
+
+// A fingerprint of what the story depends on after resolution. Post-resolution
+// the only thing that can change is the resolve value (trades are rejected once
+// resolved), so the winning bin / resolve value fully captures staleness.
+function _currentStorySignature() {
+  if (typeof dualMarket === 'undefined' || !dualMarket || !dualMarket.initialized) return null;
+  return dualMarket.history.length + '|' + dualMarket.lmsr.lastResolveValue + '|' + dualMarket.lmsr.winningBin;
+}
+
+// Toggle the "outdated" badge: shown when a story exists but the market has been
+// re-resolved since it was generated.
+function refreshStoryOutdated() {
+  var badge = document.getElementById('storyOutdatedBadge');
+  if (!badge) return;
+  var card = document.getElementById('storyCard');
+  var visible = card && card.style.display !== 'none';
+  var stale = visible && _lastStoryMarkdown && _storySignature !== null &&
+    _storySignature !== _currentStorySignature();
+  badge.style.display = stale ? '' : 'none';
+}
+
+// Clear story state on a new market / load so a stale report can't leak across.
+function resetStoryState() {
+  _lastStoryMarkdown = '';
+  _storySignature = null;
+  var badge = document.getElementById('storyOutdatedBadge');
+  if (badge) badge.style.display = 'none';
+}
 
 function generateStoryReport() {
   if (typeof dualMarket === 'undefined' || !dualMarket || !dualMarket.initialized) {
@@ -750,9 +782,11 @@ function generateStoryReport() {
   }
   try {
     _lastStoryMarkdown = buildStoryMarkdown(dualMarket);
+    _storySignature = _currentStorySignature();
     var preview = document.getElementById('storyPreview');
     preview.innerHTML = renderMarkdown(_lastStoryMarkdown);
     document.getElementById('storyCard').style.display = '';
+    refreshStoryOutdated(); // freshly generated -> hides the badge
     document.getElementById('storyCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
     showToast('Story generated (' + dualMarket.history.length + ' actions)', 'info');
   } catch (e) {

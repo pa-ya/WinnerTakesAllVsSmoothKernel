@@ -99,27 +99,6 @@ function lmsrSolveB(q, target) {
   return 0.5 * (lo + hi);
 }
 
-// Solve for scalar s ≥ 0 such that C(q + s·dir; b) − C(q; b) = target.
-// f(s) is monotone increasing in s for any non-negative dir; bisection.
-function lmsrSolveShares(q, b, dir, target) {
-  if (target <= 0) return 0;
-  var n = q.length, c0 = lmsrCost(q, b);
-  function f(s) {
-    var qq = new Array(n);
-    for (var i = 0; i < n; i++) qq[i] = q[i] + s * dir[i];
-    return lmsrCost(qq, b) - c0;
-  }
-  var lo = 0, hi = target + 1, guard = 0;
-  while (f(hi) < target && guard++ < 300) hi *= 2;
-  for (var it = 0; it < 300; it++) {
-    var mid = 0.5 * (lo + hi);
-    var v = f(mid);
-    if (Math.abs(v - target) <= Math.max(1e-9, 1e-12 * target)) return mid;
-    if (v < target) lo = mid; else hi = mid;
-  }
-  return 0.5 * (lo + hi);
-}
-
 // ============================================================
 // 6. SHARED SMOOTH-KERNEL SETTLEMENT (mixin)
 // ============================================================

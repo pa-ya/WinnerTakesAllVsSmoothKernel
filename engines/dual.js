@@ -315,6 +315,12 @@ DualMarket.prototype.resolve = function (value) {
   }
   var l2Result = this.l2.resolve(value);
 
+  // Re-resolve replaces the prior resolution rather than appending a second
+  // 'resolve' event (a re-resolve is the user changing the simulated outcome,
+  // not a new market action). Keeps exactly one resolve entry at the tail.
+  if (this.history.length && this.history[this.history.length - 1].type === 'resolve') {
+    this.history.pop();
+  }
   this._record('resolve', null, { value: value }, before,
     { lmsr: DualMarket._trimResult(lmsrResult), l2: DualMarket._trimResult(l2Result) });
   return { lmsr: lmsrResult, l2: l2Result };
