@@ -637,16 +637,26 @@
   assert(mdH.indexOf('<blockquote>q</blockquote>') > -1, 'renderMarkdown: blockquote');
   assert(mdH.indexOf('<hr>') > -1, 'renderMarkdown: horizontal rule');
   assert(renderMarkdown('a < b & c').indexOf('&lt; b &amp; c') > -1, 'renderMarkdown: HTML-escapes content');
+  // collapsible passthrough: <details>/<summary> survive, inner markdown still renders
+  var mdD = renderMarkdown('<details>\n<summary>**Detail**</summary>\n\n| A | B |\n| :--- | ---: |\n| 1 | 2 |\n\n</details>');
+  assert(mdD.indexOf('<details>') > -1 && mdD.indexOf('</details>') > -1, 'renderMarkdown: <details> passthrough');
+  assert(mdD.indexOf('<summary><strong>Detail</strong></summary>') > -1, 'renderMarkdown: <summary> inline rendered');
+  assert(mdD.indexOf('<table>') > -1 && mdD.indexOf('<td>1</td>') > -1, 'renderMarkdown: markdown inside <details> renders');
   // report builder over the captured market
   var story = buildStoryMarkdown(hm);
   assert(story.indexOf('## 1.') > -1 && story.indexOf('## 2.') > -1 &&
     story.indexOf('## 3.') > -1 && story.indexOf('## 4.') > -1, 'story has all four sections');
   assert(story.indexOf('Market Configuration') > -1, 'story has config table');
-  assert(story.indexOf('4.4 Overall') > -1, 'story has overall verdict');
+  assert(story.indexOf('4.5 Overall') > -1, 'story has overall verdict');
+  assert(story.indexOf('4.1 Resolution Profile') > -1 && story.indexOf('Kernel-captured belief') > -1,
+    'story has resolution-profile section with kernel-captured belief');
+  assert(story.indexOf('Settlement kernel') > -1 && story.indexOf('█') > -1, 'story has ASCII kernel bar chart');
+  assert(story.indexOf('<details>') > -1 && story.indexOf('<summary>') > -1, 'story uses collapsible detail blocks');
   assert(story.indexOf('[object') === -1 && story.indexOf('undefined') === -1 && story.indexOf('NaN') === -1,
     'story has no [object/undefined/NaN artifacts');
   var storyHtml = renderMarkdown(story);
   assert(storyHtml.indexOf('<table>') > -1 && storyHtml.indexOf('<h2>') > -1, 'rendered story produces tables + headings');
+  assert(storyHtml.indexOf('<details>') > -1 && storyHtml.indexOf('<summary>') > -1, 'rendered story produces collapsibles');
   assert(/(^|\n)\|/.test(storyHtml) === false, 'rendered story leaves no raw pipe rows');
 
   // ============================================================

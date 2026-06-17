@@ -35,6 +35,47 @@ function _sround(n, d) {
   return Number(n).toFixed(d == null ? 3 : d);
 }
 
+// ---- collapsible blocks (emitted as <details>/<summary>; portable Markdown) ----
+// title is plain text/markdown; note (optional) renders as a muted italic hint.
+function _detailsOpen(title, note) {
+  var sum = '**' + title + '**' + (note ? ' _— ' + note + '_' : '');
+  return ['<details>', '<summary>' + sum + '</summary>', ''];
+}
+function _detailsClose() { return ['', '</details>', '']; }
+
+// ---- ASCII bar helpers (for the resolution-profile charts in fenced blocks) ----
+var _EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉'];
+function _bar(value, max, width) {
+  if (!(max > 0) || !(value > 0)) return '';
+  var frac = Math.max(0, Math.min(1, value / max));
+  var eighths = Math.round(frac * width * 8); // total eighth-blocks, rounded
+  var whole = Math.floor(eighths / 8), rem = eighths % 8;
+  if (whole >= width) { whole = width; rem = 0; }
+  var s = '';
+  for (var i = 0; i < whole; i++) s += '█';
+  if (rem > 0 && whole < width) s += _EIGHTHS[rem];
+  return s;
+}
+function _padEnd(s, len) {
+  s = String(s);
+  while (s.length < len) s += ' ';
+  return s;
+}
+function _padStart(s, len) {
+  s = String(s);
+  while (s.length < len) s = ' ' + s;
+  return s;
+}
+function _repeat(ch, n) {
+  var s = '';
+  for (var i = 0; i < n; i++) s += ch;
+  return s;
+}
+function _ssignpct(n) { // signed percent (already in percent units), unicode minus
+  if (n == null || isNaN(n) || !isFinite(n)) return '—';
+  return (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%';
+}
+
 // ============================================================
 // 1. MARKDOWN -> HTML  (supports the subset this report emits:
 //    headings, tables, bold/italic/inline-code, ordered/unordered lists,
@@ -79,6 +120,22 @@ function renderMarkdown(md) {
       while (i < n && !/^```/.test(lines[i])) { buf.push(escapeHtml(lines[i])); i++; }
       i++; // skip closing fence
       out.push('<pre><code>' + buf.join('\n') + '</code></pre>');
+      continue;
+    }
+
+    // raw HTML passthrough for collapsible blocks (<details>/<summary>); the
+    // content between them is still rendered as normal Markdown. Saved .md keeps
+    // these tags, which GitHub and most viewers render as native collapsibles.
+    var ht = line.trim();
+    if (/^<details\b[^>]*>$/.test(ht) || ht === '</details>') {
+      out.push(ht);
+      i++;
+      continue;
+    }
+    var sm = /^<summary>([\s\S]*)<\/summary>$/.exec(ht);
+    if (sm) {
+      out.push('<summary>' + mdInline(sm[1]) + '</summary>');
+      i++;
       continue;
     }
 
@@ -163,6 +220,7 @@ function renderMarkdown(md) {
            !/^```/.test(lines[i]) && !/^(#{1,6})\s+/.test(lines[i]) &&
            !/^\s*>\s?/.test(lines[i]) && !/^\s*[-*]\s+/.test(lines[i]) &&
            !/^\s*\d+\.\s+/.test(lines[i]) && !/^\s*([-*_])\1{2,}\s*$/.test(lines[i]) &&
+           !/^<\/?(details|summary)\b/.test(lines[i].trim()) &&
            lines[i].indexOf('|') === -1) {
       pbuf.push(mdInline(lines[i]));
       i++;
@@ -371,39 +429,45 @@ function buildStoryMarkdown(dm) {
   P('');
 
   if (resolved) {
-    // 2c. Trader payouts
+    // 2c. Trader payouts (collapsed detail)
+    var traderNames = Object.keys(cMap.Trader);
     P('### 2.3 Trader Payouts (at resolution, bin ' + winBin + ')');
     P('');
+    md.push.apply(md, _detailsOpen('Per-trader payout table',
+      traderNames.length + ' trader' + (traderNames.length === 1 ? '' : 's') + ' × both engines — gross, fees, P&L'));
     P('| Trader | Engine | Gross | Fee | Net Payout | Spent | Received | Net P&L | P&L % |');
     P('| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
-    var traderNames = Object.keys(cMap.Trader);
     for (var t = 0; t < traderNames.length; t++) {
       var nm = traderNames[t];
       var cp = cMap.Trader[nm], ip = iMap.Trader[nm];
       md.push(_payoutRow(nm, lmsrName, cp));
       if (ip) md.push(_payoutRow(nm, 'L2-norm', ip));
     }
-    P('');
+    md.push.apply(md, _detailsClose());
 
-    // 2d. LP payouts
+    // 2d. LP payouts (collapsed detail)
+    var lpNames = Object.keys(cMap.LP);
     P('### 2.4 LP Payouts (at resolution)');
     P('');
+    md.push.apply(md, _detailsOpen('Per-LP payout table',
+      lpNames.length + ' LP' + (lpNames.length === 1 ? '' : 's') + ' × both engines — deposited, withdrawn, final payout'));
     P('| LP | Engine | Deposited | Withdrawn | Final Payout | Net P&L | P&L % |');
     P('| :--- | :--- | ---: | ---: | ---: | ---: | ---: |');
-    var lpNames = Object.keys(cMap.LP);
     for (var l = 0; l < lpNames.length; l++) {
       var ln = lpNames[l];
       var clp = cMap.LP[ln], ilp = iMap.LP[ln];
       md.push(_lpRow(ln, lmsrName, clp));
       if (ilp) md.push(_lpRow(ln, 'L2-norm', ilp));
     }
-    P('');
+    md.push.apply(md, _detailsClose());
 
-    // 2e. Combined (dual-role) summary
+    // 2e. Combined (dual-role) summary (collapsed detail)
     var dualNames = traderNames.filter(function (nm) { return cMap.LP[nm]; });
     if (dualNames.length) {
       P('### 2.5 Combined Trader + LP Summary (dual-role participants)');
       P('');
+      md.push.apply(md, _detailsOpen('Dual-role participant summary',
+        dualNames.length + ' participant' + (dualNames.length === 1 ? '' : 's') + ' who both traded and provided liquidity'));
       P('| Participant | Engine | Trade Payout | LP Payout | Total Payout | Total Spent | Net P&L |');
       P('| :--- | :--- | ---: | ---: | ---: | ---: | ---: |');
       for (var d = 0; d < dualNames.length; d++) {
@@ -411,7 +475,7 @@ function buildStoryMarkdown(dm) {
         md.push(_combinedRow(dn, lmsrName, cMap.Trader[dn], cMap.LP[dn]));
         if (iMap.Trader[dn] && iMap.LP[dn]) md.push(_combinedRow(dn, 'L2-norm', iMap.Trader[dn], iMap.LP[dn]));
       }
-      P('');
+      md.push.apply(md, _detailsClose());
     }
   }
 
@@ -486,8 +550,15 @@ function _userStory(dm, name, hist, lmsrName, cMap, iMap, resolved, winBin) {
   if (isLp || isCreator) roleBits.push('LP');
   var role = roleBits.length ? roleBits.join(' + ') : 'Participant';
 
-  out.push('### ' + name + '  _(' + role + ')_');
-  out.push('');
+  // collapsed by default; the summary carries name, role and (if resolved) the
+  // bottom-line net P&L on each engine so the headline reads without expanding.
+  var teaser = acts.length + ' action' + (acts.length === 1 ? '' : 's');
+  if (resolved) {
+    var cNet = (cMap.Trader[name] ? cMap.Trader[name].netPnL : 0) + (cMap.LP[name] ? cMap.LP[name].netPnL : 0);
+    var iNet = (iMap.Trader[name] ? iMap.Trader[name].netPnL : 0) + (iMap.LP[name] ? iMap.LP[name].netPnL : 0);
+    teaser += ' · net P&L ' + lmsrName + ' ' + _ssign(cNet) + ' / L2 ' + _ssign(iNet);
+  }
+  out.push.apply(out, _detailsOpen(name + ' (' + role + ')', teaser));
   var startWallet = dm.traders[name] ? dm.traders[name].initialBalance : 0;
   if (isCreator) {
     out.push('**Creator** seeded the market with **' + _snum(dm.initConfig.liquidity) +
@@ -543,6 +614,7 @@ function _userStory(dm, name, hist, lmsrName, cMap, iMap, resolved, winBin) {
       out.push('');
     }
   }
+  out.push.apply(out, _detailsClose());
   return out;
 }
 
@@ -564,22 +636,128 @@ function _userStepRow(engine, e, res, pf) {
   return '| ' + engine + ' | ' + costTxt + ' | ' + tokTxt + ' | ' + peakTxt + ' | ' + expTxt + ' | ' + pnlTxt + ' |';
 }
 
+// ---- resolution profile: smooth-kernel settlement + per-engine belief (Section 4) ----
+// Builds two Markdown ASCII bar charts (the shared triangular kernel, then each
+// engine's final belief under it) plus a delta-metrics table. The kernel is
+// identical for both engines (settlement is shared); what differs is where each
+// AMM left its probability mass relative to where the payout actually lands.
+function _resolutionProfileSection(dm, lmsrName, N, W, winBin) {
+  var out = [];
+  var kernel = dm.l2.getSettlementKernel(winBin); // shared by both engines
+  var cp = dm.lmsr.getProbabilities();
+  var ip = dm.l2.getProbabilities();
+  var centers = dm.l2.centers;
+  var resolveVal = dm.lmsr.lastResolveValue;
+
+  // window: nonzero kernel is winBin ± W; cap the rows we draw for big W
+  var lo = Math.max(0, winBin - W);
+  var hi = Math.min(N - 1, winBin + W);
+  var MAXROWS = 25, truncated = false;
+  if (hi - lo + 1 > MAXROWS) {
+    var half = Math.floor((MAXROWS - 1) / 2);
+    lo = Math.max(0, winBin - half);
+    hi = Math.min(N - 1, winBin + half);
+    truncated = true;
+  }
+  var binW = String(hi).length;
+
+  out.push('### 4.1 Resolution Profile — Smooth Kernel');
+  out.push('');
+  out.push('The market resolved at **' + resolveVal + '** → **bin ' + winBin + '**. Settlement is ' +
+    'identical for both engines: a triangular kernel of width **' + W + '** pays the winning bin ' +
+    '(weight 1.00) and its ' + W + ' neighbour' + (W === 1 ? '' : 's') + ' on each side, fading linearly ' +
+    'to zero. What differs is _where each AMM had left its probability mass_ — i.e. how much of each ' +
+    'engine\'s final belief sits under the payout kernel.');
+  out.push('');
+
+  // --- chart 1: the shared triangular kernel ---
+  var k = [];
+  k.push('Settlement kernel (triangular, W=' + W + ')        ● = winning bin ' + winBin);
+  k.push(_repeat('─', 56));
+  for (var i = lo; i <= hi; i++) {
+    var marker = (i === winBin) ? '● ' : '  ';
+    k.push(marker + 'bin ' + _padStart(i, binW) + '   ' +
+      _padStart(kernel[i].toFixed(2), 4) + '  ' + _bar(kernel[i], 1, 24));
+  }
+  if (truncated) k.push('  … (kernel spans bins ' + Math.max(0, winBin - W) + '–' + Math.min(N - 1, winBin + W) + '; trimmed to ±' + Math.floor((MAXROWS - 1) / 2) + ' for display)');
+  out.push('```');
+  out.push.apply(out, k);
+  out.push('```');
+  out.push('');
+
+  // --- chart 2: each engine's final belief under the kernel ---
+  var maxP = 0;
+  for (var j = lo; j <= hi; j++) { if (cp[j] > maxP) maxP = cp[j]; if (ip[j] > maxP) maxP = ip[j]; }
+  function cell(p) {
+    return _padStart((p * 100).toFixed(1) + '%', 6) + ' ' + _padEnd(_bar(p, maxP, 10), 10);
+  }
+  var preW = 2 + 4 + binW + 2; // marker + 'bin ' + number + gap
+  var b = [];
+  b.push(_padEnd('Bin', preW) + _padEnd(lmsrName, 17) + '  ' + _padEnd('L2-norm', 17) + '  Δ(L2−' + lmsrName + ')');
+  b.push(_repeat('─', preW + 17 + 2 + 17 + 2 + 11));
+  for (var m = lo; m <= hi; m++) {
+    var mk = (m === winBin) ? '● ' : '  ';
+    var dpct = (ip[m] - cp[m]) * 100;
+    var ds = (dpct >= 0 ? '+' : '−') + Math.abs(dpct).toFixed(1) + '%';
+    b.push(mk + 'bin ' + _padStart(m, binW) + '  ' + cell(cp[m]) + '  ' + cell(ip[m]) + '  ' + _padStart(ds, 7));
+  }
+  out.push('```');
+  out.push.apply(out, b);
+  out.push('```');
+  out.push('');
+
+  // --- delta metrics table ---
+  var cCap = 0, iCap = 0, cMean = 0, iMean = 0, cPeakBin = 0, iPeakBin = 0, cPeakP = -1, iPeakP = -1;
+  for (var t = 0; t < N; t++) {
+    cCap += cp[t] * kernel[t]; iCap += ip[t] * kernel[t];
+    cMean += centers[t] * cp[t]; iMean += centers[t] * ip[t];
+    if (cp[t] > cPeakP) { cPeakP = cp[t]; cPeakBin = t; }
+    if (ip[t] > iPeakP) { iPeakP = ip[t]; iPeakBin = t; }
+  }
+  out.push('| Resolution metric | ' + lmsrName + ' | L2-norm | Δ (L2−' + lmsrName + ') |');
+  out.push('| :--- | ---: | ---: | ---: |');
+  out.push('| Kernel-captured belief (Σ p·k) | ' + _sprob(cCap) + ' | ' + _sprob(iCap) + ' | ' + _ssignpct((iCap - cCap) * 100) + ' |');
+  out.push('| Peak bin (distance from winner) | ' + cPeakBin + ' (' + Math.abs(cPeakBin - winBin) + ') | ' + iPeakBin + ' (' + Math.abs(iPeakBin - winBin) + ') | — |');
+  out.push('| Peak probability | ' + _sprob(cPeakP) + ' | ' + _sprob(iPeakP) + ' | ' + _ssignpct((iPeakP - cPeakP) * 100) + ' |');
+  out.push('| E[value] (resolve = ' + resolveVal + ') | ' + _sround(cMean, 2) + ' | ' + _sround(iMean, 2) + ' | — |');
+  out.push('| \\|E[value] − resolve\\| | ' + _sround(Math.abs(cMean - resolveVal), 2) + ' | ' + _sround(Math.abs(iMean - resolveVal), 2) + ' | — |');
+  out.push('');
+
+  // --- interpretation ---
+  var capWinner = cCap > iCap ? lmsrName : (iCap > cCap ? 'L2-norm' : 'a tie');
+  out.push('**Reading it.** The _kernel-captured belief_ (Σ p·k) is the share of each engine\'s ' +
+    'final displayed probability that falls under the payout kernel — higher means the market\'s odds ' +
+    'were better aligned with where settlement actually paid. Here **' + capWinner + '** captured more (' +
+    _sprob(cCap) + ' vs ' + _sprob(iCap) + '). ' + lmsrName + '\'s softmax pricing concentrates ' +
+    'probability faster, so it tends to spike a sharper peak; L2-norm\'s linear display stays more spread, ' +
+    'so its mass under a narrow kernel is usually lower. This is path-dependent — it scores _this_ ' +
+    'resolution, not the design in general.');
+  out.push('');
+  return out;
+}
+
 // ---- comparison & verdict (Section 4) ----
 function _comparisonSection(dm, hist, stateActions, lmsrName, cMap, iMap, resolved, winBin, N, W) {
   var out = [];
   out.push('## 4. ' + lmsrName + ' vs L2-norm — Who Played Better?');
   out.push('');
   out.push('Both engines saw the **same** actions and the **same** settlement; they differ only ' +
-    'in how each prices a trade. Below: how they diverged action by action, then a three-lens verdict.');
+    'in how each prices a trade. Below: the resolution profile, how they diverged action by action, ' +
+    'then a three-lens verdict.');
   out.push('');
 
-  // 4.1 per-action comparison (trades only)
+  // 4.1 resolution profile (smooth-kernel settlement + per-engine belief)
+  if (resolved) out.push.apply(out, _resolutionProfileSection(dm, lmsrName, N, W, winBin));
+
+  // 4.2 per-action comparison (trades only) — collapsed detail
   var trades = stateActions.filter(function (e) {
     return /Buy|Sell/.test(e.type) || e.type === 'sellAll';
   });
   if (trades.length) {
-    out.push('### 4.1 Action-by-Action');
+    out.push('### 4.2 Action-by-Action');
     out.push('');
+    out.push.apply(out, _detailsOpen('Per-action trade comparison',
+      trades.length + ' trade' + (trades.length === 1 ? '' : 's') + ' — tokens/peak per engine, who each favoured'));
     out.push('| # | Action | ' + lmsrName + ' tokens/out | L2 tokens/out | ' + lmsrName + ' peak | L2 peak | Better for trader | Better for LP |');
     out.push('| :--- | :--- | ---: | ---: | ---: | ---: | :--- | :--- |');
     var maxRows = 14;
@@ -613,13 +791,13 @@ function _comparisonSection(dm, hist, stateActions, lmsrName, cMap, iMap, resolv
       'risk onto **LPs**. For a **sell**, more collateral out favours the trader. ' + lmsrName +
       ' (a log-cost rule) tends to hand out more shares per unit collateral than the L2-norm ' +
       'hypersphere, so it usually reads "better for trader / worse for LP" on buys.');
-    out.push('');
+    out.push.apply(out, _detailsClose());
   }
 
-  // 4.2 aggregates
+  // 4.3 aggregates
   var cAgg = _aggPnL(dm.lmsr.lastResolvePayouts);
   var iAgg = _aggPnL(dm.l2.lastResolvePayouts);
-  out.push('### 4.2 Aggregate Outcome');
+  out.push('### 4.3 Aggregate Outcome');
   out.push('');
   out.push('| Aggregate | ' + lmsrName + ' | L2-norm |');
   out.push('| :--- | ---: | ---: |');
@@ -635,8 +813,8 @@ function _comparisonSection(dm, hist, stateActions, lmsrName, cMap, iMap, resolv
   }
   out.push('');
 
-  // 4.3 three-lens verdict (rule-based)
-  out.push('### 4.3 Verdict — Three Lenses');
+  // 4.4 three-lens verdict (rule-based)
+  out.push('### 4.4 Verdict — Three Lenses');
   out.push('');
 
   // prediction-market lens: which displayed peak ended nearer the resolved bin
@@ -699,7 +877,7 @@ function _comparisonSection(dm, hist, stateActions, lmsrName, cMap, iMap, resolv
   } else {
     overall = 'L2-norm';
   }
-  out.push('### 4.4 Overall');
+  out.push('### 4.5 Overall');
   out.push('');
   out.push('> **' + overall + '** is the better all-round design for this market. ' +
     (arbBlocked

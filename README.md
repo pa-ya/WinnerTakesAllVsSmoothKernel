@@ -102,9 +102,15 @@ The left engine has two selectable variants (set in the Setup tab):
   market's life — built purely by replaying the recorded action timeline (no AI).
   Four sections: (1) brief narrative of the most impactful actions, (2) final
   tables (config, state, trader/LP payouts), (3) per-user step-by-step stories on
-  both engines, (4) AMM comparison with a three-lens verdict. Rendered inline as a
-  Markdown preview; **Save .md** writes it out via the browser's Save-As dialog
-  (falling back to a download)
+  both engines, (4) AMM comparison — including a **resolution profile** (ASCII
+  bar charts of the shared triangular settlement kernel and each engine's final
+  belief under it, plus a kernel-captured-belief delta table) and a three-lens
+  verdict. Rendered inline as a full (non-scrolling) Markdown preview, with the
+  most detailed parts (payout tables, per-player stories, the action-by-action
+  table) in collapsible `<details>` sections so the headline reads first. A
+  pulsing amber badge flags the story as outdated after a re-resolve. **Save .md**
+  writes it out via the browser's Save-As dialog (falling back to a download); the
+  saved file keeps the `<details>` collapsibles, which GitHub renders natively
 
 ### General
 - Dark/light theme toggle
